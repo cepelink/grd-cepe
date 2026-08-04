@@ -1,0 +1,1025 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gerador de GRD — CEPE doc</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<style>
+  :root{
+    --verde: #0E6B4F;
+    --verde-escuro: #0A4E3A;
+    --verde-claro: #E7F2ED;
+    --cinza-texto: #2A2E2C;
+    --cinza-borda: #C9D2CD;
+    --fundo: #F5F7F6;
+    --branco: #FFFFFF;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+    background: var(--fundo);
+    color: var(--cinza-texto);
+  }
+
+  .app{
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 24px 20px 80px;
+  }
+  .app-header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom: 14px;
+  }
+  .logo{ display:flex; flex-direction:column; line-height:1; }
+  .logo .mark{ font-size: 28px; font-weight: 800; color: var(--verde); letter-spacing: -0.5px; }
+  .logo .sub{ font-size: 12px; font-weight: 700; color: var(--verde-escuro); letter-spacing: 3px; margin-top: -2px; }
+  .app-title{ font-size: 13px; color: #6b756f; text-align:right; }
+
+  .banner-modo{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 9px 14px;
+    border-radius: 8px;
+    margin-bottom: 18px;
+  }
+  .banner-modo.sync{ background:#E7F2ED; color:var(--verde-escuro); border:1px solid #BFE0D2; }
+  .banner-modo.local{ background:#FDF3E3; color:#8A5A00; border:1px solid #F0D9A6; }
+
+  .card{
+    background: var(--branco);
+    border: 1px solid var(--cinza-borda);
+    border-radius: 10px;
+    padding: 18px 20px;
+    margin-bottom: 16px;
+  }
+  .card h2{
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--verde-escuro);
+    margin: 0 0 14px 0;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--verde-claro);
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+  }
+  .link-btn{
+    background:none; border:none; color: var(--verde);
+    font-size: 11.5px; font-weight:700; text-transform:none; letter-spacing:0;
+    cursor:pointer; text-decoration: underline; padding:0;
+  }
+
+  .grid{ display:grid; gap: 12px; }
+  .grid-4{ grid-template-columns: repeat(4, 1fr); }
+  .grid-2{ grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 800px){ .grid-4{ grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 520px){ .grid-4, .grid-2{ grid-template-columns: 1fr; } }
+
+  label{
+    display:block; font-size: 11.5px; font-weight: 600; color: #55605A;
+    margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.4px;
+  }
+  input[type=text], input[type=date], select{
+    width: 100%; padding: 9px 10px; border: 1px solid var(--cinza-borda);
+    border-radius: 6px; font-size: 14px; background: var(--branco); color: var(--cinza-texto);
+  }
+  input:focus, select:focus{ outline: 2px solid var(--verde); outline-offset: 1px; border-color: var(--verde); }
+  .field{ margin-bottom: 0; }
+  .hint{ font-size: 11px; color: #8a938d; margin-top: 3px; }
+
+  .scan-row{ display:grid; grid-template-columns: 1fr 210px 140px; gap: 14px; align-items:end; }
+  @media (max-width: 700px){ .scan-row{ grid-template-columns: 1fr; } }
+  .barcode-input{
+    font-size: 20px; font-weight: 700; letter-spacing: 2px; padding: 12px 12px;
+    border: 2px solid var(--verde); background: var(--verde-claro);
+  }
+  .preview-objeto{
+    font-size: 11.5px; margin-top: 5px; color: var(--verde-escuro); font-weight:700; min-height: 15px;
+  }
+  .toggle-caixa{ display:flex; border: 1px solid var(--cinza-borda); border-radius: 6px; overflow:hidden; }
+  .toggle-caixa button{
+    flex:1; padding: 10px 8px; border:none; background: var(--branco); font-size: 13px;
+    font-weight: 700; cursor:pointer; color: #6b756f; border-right: 1px solid var(--cinza-borda);
+  }
+  .toggle-caixa button:last-child{ border-right:none; }
+  .toggle-caixa button.active{ background: var(--verde); color: var(--branco); }
+  .btn{
+    padding: 10px 16px; border-radius: 6px; border: 1px solid var(--verde); background: var(--verde);
+    color: var(--branco); font-size: 13px; font-weight: 700; cursor: pointer; white-space:nowrap;
+  }
+  .btn:hover{ background: var(--verde-escuro); }
+  .btn.secondary{ background: var(--branco); color: var(--verde-escuro); }
+  .btn.secondary:hover{ background: var(--verde-claro); }
+  .btn.danger{ background: var(--branco); color: #B3261E; border-color: #E3B3AF; padding: 5px 10px; font-size: 12px; }
+  .btn.danger:hover{ background: #FBEAE9; }
+  .btn.ghost{ background: transparent; border-color: var(--cinza-borda); color: #55605A; }
+  .btn.block{ width:100%; }
+  .btn:disabled{ opacity:0.45; cursor:not-allowed; }
+
+  .toolbar{ display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end; margin-top: 10px; }
+
+  .status-msg{ font-size: 12.5px; font-weight: 600; padding: 8px 12px; border-radius: 6px; margin-top: 10px; display:none; }
+  .status-msg.ok{ display:block; background:#E7F2ED; color:var(--verde-escuro); }
+  .status-msg.warn{ display:block; background:#FDF3E3; color:#8A5A00; }
+  .status-msg.error{ display:block; background:#FBEAE9; color:#B3261E; }
+
+  .summary{ display:flex; gap: 18px; flex-wrap:wrap; font-size: 13px; color: #55605A; margin-bottom: 10px; }
+  .summary b{ color: var(--verde-escuro); font-size:15px; }
+
+  table.itens, table.hist{ width:100%; border-collapse: collapse; font-size: 13px; }
+  table.itens th, table.itens td, table.hist th, table.hist td{
+    border: 1px solid var(--cinza-borda); padding: 8px 8px; text-align:left;
+  }
+  table.itens th, table.hist th{
+    background: var(--verde-claro); color: var(--verde-escuro); font-size: 11.5px;
+    text-transform: uppercase; letter-spacing: 0.4px;
+  }
+  table.itens td.center, table.itens th.center, table.hist td.center, table.hist th.center{ text-align:center; }
+  table.itens tbody tr:nth-child(even), table.hist tbody tr:nth-child(even){ background:#FAFBFA; }
+  .empty-state{ text-align:center; padding: 30px 10px; color: #8a938d; font-size: 13px; }
+  .row-edit{ width:100%; border:1px solid var(--cinza-borda); border-radius:4px; padding:4px 6px; font-size:13px; }
+  select.row-edit{ background: var(--branco); }
+  .actions-cell{ display:flex; gap:6px; flex-wrap:wrap; }
+  .btn.mini{ padding:5px 8px; font-size:11.5px; }
+
+  .modal-overlay{
+    display:none; position:fixed; inset:0; background: rgba(20,30,25,0.55); z-index: 1000;
+    align-items:center; justify-content:center; padding: 20px;
+  }
+  .modal-overlay.open{ display:flex; }
+  .modal-box{ background: var(--branco); border-radius: 10px; max-width: 520px; width: 100%; max-height: 85vh; overflow-y:auto; padding: 22px; }
+  .modal-box h3{ margin: 0 0 14px 0; color: var(--verde-escuro); font-size: 16px; }
+  .modal-close{ display:flex; justify-content:flex-end; margin-top: 16px; }
+  .cadastro-lista{ max-height: 260px; overflow-y:auto; border: 1px solid var(--cinza-borda); border-radius: 6px; margin-top: 10px; }
+  .cadastro-cliente-item{ border-bottom: 1px solid var(--cinza-borda); padding: 8px 10px; }
+  .cadastro-cliente-item:last-child{ border-bottom:none; }
+  .cadastro-cliente-head{ display:flex; justify-content:space-between; align-items:center; font-weight:700; font-size:13px; color: var(--verde-escuro); }
+  .cadastro-setores{ margin-top: 6px; display:flex; flex-wrap:wrap; gap:6px; }
+  .chip{ background: var(--verde-claro); color: var(--verde-escuro); font-size: 11.5px; padding: 4px 8px; border-radius: 20px; display:flex; align-items:center; gap:6px; }
+  .chip button{ background:none; border:none; color:#B3261E; cursor:pointer; font-weight:800; font-size:12px; line-height:1; padding:0; }
+  .add-inline{ display:flex; gap:8px; margin-top:10px; }
+  .add-inline input{ flex:1; }
+
+  .imprimir-opcoes{ display:flex; flex-direction:column; gap: 12px; margin-top: 8px; }
+  .opcao-card{ border: 1px solid var(--cinza-borda); border-radius: 8px; padding: 14px; display:flex; align-items:center; gap: 14px; cursor:pointer; background: var(--branco); }
+  .opcao-card:hover{ border-color: var(--verde); background: var(--verde-claro); }
+  .opcao-card .ico{ font-size: 24px; }
+  .opcao-card .txt strong{ display:block; font-size: 13.5px; color: var(--verde-escuro); }
+  .opcao-card .txt span{ font-size: 12px; color: #6b756f; }
+
+  #print-area{ display:none; }
+  @media print{
+    body *{ visibility: hidden; }
+    .app{ padding:0; margin:0; max-width:none; }
+    #print-area, #print-area *{ visibility: visible; }
+    #print-area{ display:block; position:absolute; top:0; left:0; width: 100%; }
+    .modal-overlay{ display:none !important; }
+    @page{ size: A4; margin: 14mm 12mm; }
+  }
+  .sheet{ font-family: Arial, Helvetica, sans-serif; color: #1a1a1a; width: 100%; }
+  .sheet-header{ display:flex; justify-content:space-between; align-items:flex-start; border-bottom: 2px solid var(--verde); padding-bottom: 10px; margin-bottom: 14px; }
+  .sheet-logo .mark{ font-size: 26px; font-weight: 800; color: var(--verde); letter-spacing: -0.5px; margin:0; }
+  .sheet-logo .sub{ font-size: 11px; font-weight: 700; color: var(--verde-escuro); letter-spacing: 3px; margin-top: -3px; }
+  .sheet-site{ font-size: 12px; color: #444; padding-top: 4px; }
+  .sheet-title{ text-align:center; font-size: 17px; font-weight: 800; letter-spacing: 0.5px; margin: 6px 0 14px; text-transform: uppercase; }
+  .sheet-meta{ font-size: 12.5px; margin-bottom: 4px; }
+  .sheet-meta-row{ display:flex; justify-content:space-between; gap: 20px; margin-bottom: 3px; }
+  .sheet-meta-row span.lbl{ font-weight:700; }
+  table.sheet-table{ width:100%; border-collapse: collapse; margin-top: 12px; font-size: 11.5px; }
+  table.sheet-table th{ background: #EFEFEF; border: 1px solid #999; padding: 6px 6px; font-size: 11px; text-transform: uppercase; }
+  table.sheet-table td{ border: 1px solid #999; padding: 5px 6px; }
+  table.sheet-table thead{ display: table-header-group; }
+  table.sheet-table tr{ page-break-inside: avoid; }
+  .col-item{ width: 6%; text-align:center; }
+  .col-cliente{ width: 15%; }
+  .col-setor{ width: 47%; }
+  .col-objeto{ width: 15%; text-align:center; }
+  .col-caixa{ width: 17%; text-align:center; }
+  .sheet-title-row{ background:#EFEFEF !important; text-align:center; font-weight:800; letter-spacing:0.5px; }
+  .sheet-footer{ margin-top: 22px; padding-top: 8px; border-top: 1px solid #bbb; font-size: 9.5px; color: #333; display:flex; justify-content:space-between; align-items:center; }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <div class="app-header">
+    <div class="logo">
+      <span class="mark">cepe</span>
+      <span class="sub">DOC</span>
+    </div>
+    <div class="app-title">Gerador de GRD<br>Guia de Remessa de Documento</div>
+  </div>
+
+  <div class="banner-modo" id="banner-modo">Verificando modo de acesso...</div>
+
+  <!-- DADOS DO DOCUMENTO -->
+  <div class="card">
+    <h2>Dados do documento</h2>
+    <div class="grid grid-4" style="margin-bottom:12px;">
+      <div class="field">
+        <label for="f-data">Data</label>
+        <input type="date" id="f-data">
+      </div>
+      <div class="field">
+        <label for="f-area-remetente">Área remetente</label>
+        <input type="text" id="f-area-remetente" placeholder="Ex: CEPE - DEDIG">
+      </div>
+      <div class="field">
+        <label for="f-nome-remetente">Nome (remetente)</label>
+        <input type="text" id="f-nome-remetente" placeholder="Nome de quem envia">
+      </div>
+      <div class="field"></div>
+    </div>
+    <div class="grid grid-4">
+      <div class="field">
+        <label for="f-area-destinatario">Área destinatário</label>
+        <input type="text" id="f-area-destinatario" placeholder="Ex: DEDOC">
+      </div>
+      <div class="field">
+        <label for="f-nome-destinatario">Nome (destinatário)</label>
+        <input type="text" id="f-nome-destinatario" placeholder="Nome de quem recebe">
+      </div>
+      <div class="field"></div>
+      <div class="field"></div>
+    </div>
+  </div>
+
+  <!-- CLIENTE / SETOR / TIPO DE CAIXA -->
+  <div class="card">
+    <h2>
+      Cliente, setor e tipo de caixa
+      <button class="link-btn" onclick="abrirModalCadastro()">Gerenciar clientes e setores cadastrados</button>
+    </h2>
+    <div class="grid grid-2" style="margin-bottom:12px;">
+      <div class="field">
+        <label for="f-cliente">Cliente</label>
+        <select id="f-cliente"></select>
+      </div>
+      <div class="field">
+        <label>&nbsp;</label>
+        <button class="btn secondary block" onclick="abrirModalCadastro('novo-cliente')">+ Cadastrar novo cliente</button>
+      </div>
+    </div>
+    <div class="field">
+      <label for="f-setor">Setor / Delegacia (DP ou setor)</label>
+      <input type="text" id="f-setor" list="setores-list" placeholder="Ex: DELEGACIA DE POLÍCIA DA 195ª CIRCUNSCRIÇÃO - SERRITA">
+      <datalist id="setores-list"></datalist>
+      <div class="hint">Fica fixo enquanto você bipa várias caixas seguidas do mesmo setor. Setores novos digitados aqui são salvos automaticamente no cadastro do cliente.</div>
+    </div>
+  </div>
+
+  <!-- BIPAGEM -->
+  <div class="card">
+    <h2>Bipar objeto</h2>
+    <div class="scan-row">
+      <div class="field">
+        <label for="f-objeto">Objeto (código de barra)</label>
+        <input type="text" id="f-objeto" class="barcode-input" placeholder="Bipe aqui" autocomplete="off">
+        <div class="preview-objeto" id="preview-objeto"></div>
+      </div>
+      <div class="field">
+        <label>Tipo de caixa</label>
+        <div class="toggle-caixa">
+          <button type="button" id="btn-box" class="active" onclick="setCaixaTipo('BOX')">BOX</button>
+          <button type="button" id="btn-box-dupla" onclick="setCaixaTipo('BOX DUPLA')">BOX DUPLA</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>&nbsp;</label>
+        <button class="btn block" onclick="adicionarItem()">Adicionar</button>
+      </div>
+    </div>
+    <div id="status" class="status-msg"></div>
+  </div>
+
+  <!-- LISTA DE ITENS -->
+  <div class="card">
+    <h2>Itens da GRD atual</h2>
+    <div class="summary" id="summary">Nenhum item adicionado ainda.</div>
+    <div id="tabela-wrap">
+      <div class="empty-state" id="empty-state">Os itens bipados vão aparecer aqui.</div>
+      <table class="itens" id="tabela-itens" style="display:none;">
+        <thead>
+          <tr>
+            <th class="center" style="width:6%;">Item</th>
+            <th style="width:16%;">Cliente</th>
+            <th style="width:44%;">Setor</th>
+            <th class="center" style="width:14%;">Objeto</th>
+            <th class="center" style="width:14%;">Caixa</th>
+            <th class="center" style="width:6%;"></th>
+          </tr>
+        </thead>
+        <tbody id="tbody-itens"></tbody>
+      </table>
+    </div>
+    <div class="toolbar">
+      <button class="btn ghost" onclick="novaGRD()">Nova GRD (limpar tudo)</button>
+      <button class="btn secondary" onclick="exportarCSVAtual()">Exportar CSV</button>
+      <button class="btn" onclick="abrirModalImprimirAtual()">Imprimir / Exportar PDF</button>
+    </div>
+  </div>
+
+  <!-- BASE DE DADOS / HISTÓRICO -->
+  <div class="card">
+    <h2>
+      Base de dados de GRDs criadas
+      <span>
+        <button class="link-btn" onclick="atualizarHistorico()">Atualizar</button>
+        &nbsp;|&nbsp;
+        <button class="link-btn" onclick="exportarHistoricoCompleto()">Exportar tudo (CSV)</button>
+      </span>
+    </h2>
+    <div id="hist-wrap">
+      <div class="empty-state" id="hist-empty">Nenhuma GRD finalizada ainda. Toda GRD impressa ou exportada em PDF fica salva aqui automaticamente.</div>
+      <table class="hist" id="tabela-hist" style="display:none;">
+        <thead>
+          <tr>
+            <th style="width:12%;">Data</th>
+            <th style="width:16%;">Remetente → Destinatário</th>
+            <th style="width:26%;">Cliente(s)</th>
+            <th class="center" style="width:8%;">Itens</th>
+            <th style="width:24%;">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-hist"></tbody>
+      </table>
+    </div>
+    <div class="hint" style="margin-top:10px;" id="hist-legenda">Essa base fica salva neste navegador/computador. Use "Exportar tudo (CSV)" de vez em quando para guardar uma cópia de segurança em planilha.</div>
+  </div>
+
+</div>
+
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal-box" id="modal-box"></div>
+</div>
+
+<div id="print-area">
+  <div class="sheet">
+    <div class="sheet-header">
+      <div class="sheet-logo">
+        <p class="mark">cepe</p>
+        <div class="sub">DOC</div>
+      </div>
+      <div class="sheet-site">cepe.com.br</div>
+    </div>
+    <div class="sheet-title">Guia de Remessa de Documento — GRD</div>
+    <div class="sheet-meta">
+      <div class="sheet-meta-row">
+        <div><span class="lbl">DATA:</span> <span id="p-data"></span></div>
+      </div>
+      <div class="sheet-meta-row">
+        <div><span class="lbl">ÁREA REMETENTE:</span> <span id="p-area-remetente"></span></div>
+        <div><span class="lbl">NOME:</span> <span id="p-nome-remetente"></span> &nbsp; <span class="lbl">ASS:</span> ________________</div>
+      </div>
+      <div class="sheet-meta-row">
+        <div><span class="lbl">ÁREA DESTINATÁRIO:</span> <span id="p-area-destinatario"></span></div>
+        <div><span class="lbl">NOME:</span> <span id="p-nome-destinatario"></span> &nbsp; <span class="lbl">ASS:</span> ________________</div>
+      </div>
+    </div>
+    <table class="sheet-table">
+      <thead>
+        <tr><th colspan="5" class="sheet-title-row">Dados documento e caixa</th></tr>
+        <tr>
+          <th class="col-item">Item</th>
+          <th class="col-cliente">Cliente</th>
+          <th class="col-setor">Setor</th>
+          <th class="col-objeto">Objeto</th>
+          <th class="col-caixa">Caixa</th>
+        </tr>
+      </thead>
+      <tbody id="p-tbody"></tbody>
+    </table>
+    <div class="sheet-footer">
+      <div>Rodovia BR-101 Sul 00, KM 96,4, - n 5.225, Galpão 7, Módulo 11, Distrito Industrial Diper. Cabo de Santo Agostinho/PE - CEP: 54503-900</div>
+      <div>CNPJ: 10.921.252/0002-98 &nbsp;|&nbsp; Fone: (81) 3184.5250 &nbsp;|&nbsp; doc@cepe.com.br</div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ================= CAMADA DE ARMAZENAMENTO (sincronizado ou local) ================= */
+const TEM_STORAGE_REMOTA = !!(window.storage && typeof window.storage.get === 'function');
+
+async function storageGet(key, shared){
+  if(TEM_STORAGE_REMOTA){
+    try{
+      const r = await window.storage.get(key, shared);
+      return r ? r.value : null;
+    }catch(e){ return null; }
+  }
+  try{ return localStorage.getItem((shared ? 'shared_' : 'local_') + key); }catch(e){ return null; }
+}
+async function storageSet(key, value, shared){
+  if(TEM_STORAGE_REMOTA){
+    try{ await window.storage.set(key, value, shared); return true; }catch(e){ return false; }
+  }
+  try{ localStorage.setItem((shared ? 'shared_' : 'local_') + key, value); return true; }catch(e){ return false; }
+}
+
+/* ================= ESTADO ================= */
+let itens = [];
+let caixaTipoAtual = 'BOX';
+let grdAtualId = null;
+let cadastro = {};
+let historico = [];
+
+/* ================= INIT ================= */
+async function init(){
+  const banner = document.getElementById('banner-modo');
+  if(TEM_STORAGE_REMOTA){
+    banner.className = 'banner-modo sync';
+    banner.innerHTML = '🌐 Sincronizado — os cadastros e a base de dados de GRDs ficam disponíveis em qualquer lugar em que você abrir este documento pelo Claude.';
+    document.getElementById('hist-legenda').textContent = 'Essa base fica sincronizada — qualquer dispositivo que abrir este documento pelo Claude enxerga as mesmas GRDs. Use "Atualizar" para ver o que outros dispositivos salvaram.';
+  } else {
+    banner.className = 'banner-modo local';
+    banner.innerHTML = '💻 Modo local — os dados ficam salvos só neste navegador/computador. Para sincronizar entre vários locais, abra este documento pelo Claude em vez do arquivo baixado.';
+  }
+
+  document.getElementById('f-data').value = hoje();
+  document.getElementById('f-objeto').addEventListener('keydown', onObjetoKeydown);
+  document.getElementById('f-objeto').addEventListener('input', atualizarPreviewObjeto);
+  document.getElementById('f-cliente').addEventListener('change', async () => { renderSetorDatalist(); await salvarSessao(); });
+  ['f-data','f-area-remetente','f-nome-remetente','f-area-destinatario','f-nome-destinatario','f-setor']
+    .forEach(id => document.getElementById(id).addEventListener('input', salvarSessao));
+
+  await carregarCadastro();
+  await carregarHistorico();
+  renderClienteSelect();
+  await carregarSessao();
+  renderClienteSelect();
+  renderSetorDatalist();
+  renderHistorico();
+  renderTabela();
+
+  document.getElementById('f-objeto').focus();
+}
+
+function hoje(){ return new Date().toISOString().slice(0,10); }
+function formatarDataBR(iso){
+  if(!iso) return '';
+  const [y,m,d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+function gerarId(){ return 'grd_' + Date.now() + '_' + Math.random().toString(36).slice(2,8); }
+function escapeHtml(str){
+  const d = document.createElement('div');
+  d.textContent = str == null ? '' : str;
+  return d.innerHTML;
+}
+
+/* ================= LEITURA DO CÓDIGO DE BARRA =================
+   Formato real: [1 dígito de prefixo] [número do objeto com zeros à esquerda] [1 dígito verificador]
+   Ex: 0 00000151563 1  ->  número do objeto = 151563
+   Regra: remove o 1º dígito (prefixo) e o último dígito (verificador),
+   depois pega só os 6 últimos dígitos significativos do que sobrou. */
+function extrairObjeto(valorBruto){
+  const digitos = (valorBruto.match(/\d/g) || []).join('');
+  if(!digitos) return null;
+  if(digitos.length <= 6){
+    return digitos; // digitado manualmente, já são só os dígitos do objeto
+  }
+  const meio = digitos.slice(1, -1); // remove prefixo e dígito verificador
+  const semZeros = meio.replace(/^0+/, '') || '0';
+  return semZeros.length >= 6 ? semZeros.slice(-6) : semZeros.padStart(6, '0');
+}
+function atualizarPreviewObjeto(){
+  const bruto = document.getElementById('f-objeto').value.trim();
+  const preview = document.getElementById('preview-objeto');
+  if(!bruto){ preview.textContent = ''; return; }
+  const objeto = extrairObjeto(bruto);
+  preview.textContent = objeto ? ('Objeto: ' + objeto) : '';
+}
+
+/* ================= CADASTRO (CLIENTES / SETORES) ================= */
+async function carregarCadastro(){
+  const raw = await storageGet('cadastro', true);
+  if(raw){
+    try{ cadastro = JSON.parse(raw); return; }catch(e){}
+  }
+  cadastro = {
+    'PMPE': [],
+    'PCPE - DINTER 1': [],
+    'PCPE - DINTER 2': ['DELEGACIA DE POLÍCIA DA 195ª CIRCUNSCRIÇÃO - SERRITA'],
+    'PCPE - DINTER 3': [],
+    'PCPE - DINTER 4': [],
+    'PCPE - DINTER 5': [],
+    'PCPE - DINTER 6': [],
+    'PCPE - CAPITAL': [],
+    'FUNDARPE': [],
+    'APEJE': [],
+    'SECRETARIA DE JUSTIÇA': []
+  };
+  await salvarCadastro();
+}
+async function salvarCadastro(){ await storageSet('cadastro', JSON.stringify(cadastro), true); }
+
+function renderClienteSelect(){
+  const sel = document.getElementById('f-cliente');
+  const atual = sel.value;
+  const nomes = Object.keys(cadastro).sort((a,b)=>a.localeCompare(b));
+  sel.innerHTML = '<option value="">Selecione...</option>' +
+    nomes.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+  if(nomes.includes(atual)) sel.value = atual;
+}
+function renderSetorDatalist(){
+  const cliente = document.getElementById('f-cliente').value;
+  const lista = document.getElementById('setores-list');
+  const setores = cadastro[cliente] || [];
+  lista.innerHTML = setores.map(s => `<option value="${escapeHtml(s)}"></option>`).join('');
+}
+async function adicionarClienteCadastro(nome){
+  nome = (nome || '').trim().toUpperCase();
+  if(!nome) return false;
+  if(!cadastro[nome]) cadastro[nome] = [];
+  await salvarCadastro();
+  renderClienteSelect();
+  document.getElementById('f-cliente').value = nome;
+  renderSetorDatalist();
+  await salvarSessao();
+  return true;
+}
+async function removerClienteCadastro(nome){
+  if(!confirm(`Remover o cliente "${nome}" e todos os setores cadastrados nele?`)) return;
+  delete cadastro[nome];
+  await salvarCadastro();
+  renderClienteSelect();
+  renderSetorDatalist();
+  abrirModalCadastro();
+}
+async function adicionarSetorCadastro(cliente, setor){
+  setor = (setor || '').trim();
+  if(!cliente || !setor) return false;
+  if(!cadastro[cliente]) cadastro[cliente] = [];
+  if(!cadastro[cliente].includes(setor)){
+    cadastro[cliente].push(setor);
+    await salvarCadastro();
+  }
+  renderSetorDatalist();
+  return true;
+}
+async function removerSetorCadastro(cliente, setor){
+  cadastro[cliente] = (cadastro[cliente] || []).filter(s => s !== setor);
+  await salvarCadastro();
+  renderSetorDatalist();
+  abrirModalCadastro();
+}
+
+/* ================= MODAL GENÉRICO ================= */
+function abrirModal(html){
+  document.getElementById('modal-box').innerHTML = html;
+  document.getElementById('modal-overlay').classList.add('open');
+}
+function fecharModal(){
+  document.getElementById('modal-overlay').classList.remove('open');
+  document.getElementById('modal-box').innerHTML = '';
+}
+document.addEventListener('keydown', e => { if(e.key === 'Escape') fecharModal(); });
+
+async function abrirModalCadastro(foco){
+  await carregarCadastro();
+  renderClienteSelect();
+  renderSetorDatalist();
+
+  const clientes = Object.keys(cadastro).sort((a,b)=>a.localeCompare(b));
+  let listaHtml = clientes.map(cliente => {
+    const idSeguro = escapeHtml(cliente).replace(/[^a-zA-Z0-9]/g,'');
+    const clienteEscapadoJs = escapeHtml(cliente).replace(/'/g,"\\'");
+    const setoresHtml = (cadastro[cliente] || []).map(s => {
+      const setorEscapadoJs = escapeHtml(s).replace(/'/g,"\\'");
+      return `<span class="chip">${escapeHtml(s)} <button onclick="removerSetorCadastro('${clienteEscapadoJs}','${setorEscapadoJs}')">×</button></span>`;
+    }).join('') || '<span class="hint">Nenhum setor cadastrado ainda.</span>';
+    return `
+      <div class="cadastro-cliente-item">
+        <div class="cadastro-cliente-head">
+          <span>${escapeHtml(cliente)}</span>
+          <button class="btn danger mini" onclick="removerClienteCadastro('${clienteEscapadoJs}')">Excluir cliente</button>
+        </div>
+        <div class="cadastro-setores">${setoresHtml}</div>
+        <div class="add-inline">
+          <input type="text" id="novo-setor-${idSeguro}" placeholder="Novo setor / delegacia">
+          <button class="btn secondary mini" onclick="
+            (async function(){
+              const inp = document.getElementById('novo-setor-${idSeguro}');
+              if(await adicionarSetorCadastro('${clienteEscapadoJs}', inp.value)){ abrirModalCadastro(); }
+            })();
+          ">Adicionar</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  const html = `
+    <h3>Clientes e setores cadastrados</h3>
+    <label for="modal-novo-cliente">Cadastrar novo cliente</label>
+    <div class="add-inline">
+      <input type="text" id="modal-novo-cliente" placeholder="Ex: SECRETARIA DE EDUCAÇÃO">
+      <button class="btn" onclick="
+        (async function(){
+          const inp = document.getElementById('modal-novo-cliente');
+          if(await adicionarClienteCadastro(inp.value)){ abrirModalCadastro(); }
+        })();
+      ">Adicionar</button>
+    </div>
+    <div class="cadastro-lista">${listaHtml || '<div class="empty-state">Nenhum cliente cadastrado.</div>'}</div>
+    <div class="modal-close"><button class="btn ghost" onclick="fecharModal()">Fechar</button></div>
+  `;
+  abrirModal(html);
+  if(foco === 'novo-cliente'){
+    setTimeout(() => document.getElementById('modal-novo-cliente').focus(), 50);
+  }
+}
+
+/* ================= CAIXA / BIPAGEM ================= */
+function setCaixaTipo(tipo){
+  caixaTipoAtual = tipo;
+  document.getElementById('btn-box').classList.toggle('active', tipo === 'BOX');
+  document.getElementById('btn-box-dupla').classList.toggle('active', tipo === 'BOX DUPLA');
+  document.getElementById('f-objeto').focus();
+}
+function onObjetoKeydown(e){
+  if(e.key === 'Enter'){ e.preventDefault(); adicionarItem(); }
+}
+function mostrarStatus(msg, tipo){
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = 'status-msg ' + tipo;
+  clearTimeout(window.__statusTimeout);
+  window.__statusTimeout = setTimeout(() => { el.className = 'status-msg'; }, 3000);
+}
+
+async function adicionarItem(){
+  const cliente = document.getElementById('f-cliente').value.trim();
+  const setor = document.getElementById('f-setor').value.trim();
+  const objetoInput = document.getElementById('f-objeto');
+  const bruto = objetoInput.value.trim();
+
+  if(!cliente){
+    mostrarStatus('Selecione o cliente antes de bipar (ou cadastre um novo).', 'warn');
+    document.getElementById('f-cliente').focus();
+    return;
+  }
+  if(!setor){
+    mostrarStatus('Preencha o setor / delegacia antes de bipar.', 'warn');
+    document.getElementById('f-setor').focus();
+    return;
+  }
+  if(!bruto){
+    mostrarStatus('Bipe ou digite o número do objeto.', 'warn');
+    return;
+  }
+  const objeto = extrairObjeto(bruto);
+  if(!objeto){
+    mostrarStatus('Não consegui ler o código — confira o objeto.', 'error');
+    objetoInput.value = '';
+    document.getElementById('preview-objeto').textContent = '';
+    objetoInput.focus();
+    return;
+  }
+
+  await adicionarSetorCadastro(cliente, setor);
+  if(!grdAtualId) grdAtualId = gerarId();
+
+  itens.push({ cliente, setor, objeto, caixa: caixaTipoAtual });
+
+  objetoInput.value = '';
+  document.getElementById('preview-objeto').textContent = '';
+  objetoInput.focus();
+  mostrarStatus('Item ' + itens.length + ' adicionado: ' + objeto + ' (' + caixaTipoAtual + ')', 'ok');
+  renderTabela();
+  await salvarSessao();
+}
+async function removerItem(idx){
+  itens.splice(idx, 1);
+  renderTabela();
+  await salvarSessao();
+}
+async function atualizarCampoItem(idx, campo, valor){
+  itens[idx][campo] = valor;
+  await salvarSessao();
+  if(campo === 'caixa' || campo === 'cliente') renderTabela();
+}
+function renderTabela(){
+  const tbody = document.getElementById('tbody-itens');
+  const tabela = document.getElementById('tabela-itens');
+  const vazio = document.getElementById('empty-state');
+  const resumo = document.getElementById('summary');
+
+  if(itens.length === 0){
+    tabela.style.display = 'none';
+    vazio.style.display = 'block';
+    resumo.innerHTML = 'Nenhum item adicionado ainda.';
+    return;
+  }
+  vazio.style.display = 'none';
+  tabela.style.display = 'table';
+  tbody.innerHTML = '';
+  itens.forEach((it, idx) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="center">${idx+1}</td>
+      <td>${escapeHtml(it.cliente)}</td>
+      <td>${escapeHtml(it.setor)}</td>
+      <td class="center"><input class="row-edit" style="text-align:center;" value="${escapeHtml(it.objeto)}" onchange="atualizarCampoItem(${idx},'objeto',this.value)"></td>
+      <td class="center">
+        <select class="row-edit" onchange="atualizarCampoItem(${idx},'caixa',this.value)">
+          <option value="BOX" ${it.caixa==='BOX'?'selected':''}>BOX</option>
+          <option value="BOX DUPLA" ${it.caixa==='BOX DUPLA'?'selected':''}>BOX DUPLA</option>
+        </select>
+      </td>
+      <td class="center"><button class="btn danger" onclick="removerItem(${idx})">Excluir</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+  const totalBox = itens.filter(i => i.caixa === 'BOX').length;
+  const totalBoxDupla = itens.filter(i => i.caixa === 'BOX DUPLA').length;
+  resumo.innerHTML = `<span><b>${itens.length}</b> item(ns)</span><span><b>${totalBox}</b> BOX</span><span><b>${totalBoxDupla}</b> BOX DUPLA</span>`;
+}
+async function novaGRD(){
+  if(itens.length > 0 && !confirm('Isso vai apagar os itens da GRD atual (o histórico já salvo não é afetado). Continuar?')) return;
+  itens = [];
+  grdAtualId = null;
+  document.getElementById('f-objeto').value = '';
+  document.getElementById('preview-objeto').textContent = '';
+  renderTabela();
+  await salvarSessao();
+  document.getElementById('f-objeto').focus();
+}
+
+/* ================= DADOS DA GRD ATUAL ================= */
+function dadosGrdAtual(){
+  return {
+    id: grdAtualId || gerarId(),
+    criadoEm: Date.now(),
+    data: document.getElementById('f-data').value,
+    areaRemetente: document.getElementById('f-area-remetente').value,
+    nomeRemetente: document.getElementById('f-nome-remetente').value,
+    areaDestinatario: document.getElementById('f-area-destinatario').value,
+    nomeDestinatario: document.getElementById('f-nome-destinatario').value,
+    itens: JSON.parse(JSON.stringify(itens))
+  };
+}
+
+/* ================= FOLHA DE IMPRESSÃO ================= */
+function montarFolhaImpressao(dados){
+  document.getElementById('p-data').textContent = formatarDataBR(dados.data);
+  document.getElementById('p-area-remetente').textContent = dados.areaRemetente || '';
+  document.getElementById('p-nome-remetente').textContent = dados.nomeRemetente || '';
+  document.getElementById('p-area-destinatario').textContent = dados.areaDestinatario || '';
+  document.getElementById('p-nome-destinatario').textContent = dados.nomeDestinatario || '';
+  const tbody = document.getElementById('p-tbody');
+  tbody.innerHTML = '';
+  dados.itens.forEach((it, idx) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="col-item">${idx+1}</td>
+      <td class="col-cliente">${escapeHtml(it.cliente)}</td>
+      <td class="col-setor">${escapeHtml(it.setor)}</td>
+      <td class="col-objeto">${escapeHtml(it.objeto)}</td>
+      <td class="col-caixa">${escapeHtml(it.caixa)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+/* ================= MODAL IMPRIMIR / PDF ================= */
+async function abrirModalImprimirAtual(){
+  if(itens.length === 0){
+    mostrarStatus('Adicione ao menos um item antes de imprimir ou exportar.', 'warn');
+    return;
+  }
+  const dados = dadosGrdAtual();
+  grdAtualId = dados.id;
+  montarFolhaImpressao(dados);
+  await salvarNoHistorico(dados);
+  abrirModalOpcoesImpressao(dados);
+}
+function abrirModalOpcoesImpressao(dados){
+  const pdfDisponivel = !!(window.jspdf && window.jspdf.jsPDF);
+  const html = `
+    <h3>Como você quer gerar a GRD?</h3>
+    <div class="imprimir-opcoes">
+      <div class="opcao-card" onclick="fecharModal(); acionarImpressao();">
+        <div class="ico">🖨️</div>
+        <div class="txt"><strong>Imprimir</strong><span>Abre a janela de impressão do navegador.</span></div>
+      </div>
+      <div class="opcao-card" style="${pdfDisponivel ? '' : 'opacity:0.5; cursor:not-allowed;'}" onclick="${pdfDisponivel ? `fecharModal(); gerarPDF(${JSON.stringify(dados).replace(/"/g,'&quot;')});` : ''}">
+        <div class="ico">📄</div>
+        <div class="txt"><strong>Salvar em PDF</strong><span>${pdfDisponivel ? 'Baixa o arquivo PDF direto no computador.' : 'Indisponível sem internet — use "Imprimir" e escolha "Salvar como PDF" na janela.'}</span></div>
+      </div>
+    </div>
+    <div class="modal-close"><button class="btn ghost" onclick="fecharModal()">Cancelar</button></div>
+  `;
+  abrirModal(html);
+}
+function acionarImpressao(){ window.print(); }
+
+/* ================= GERAÇÃO DE PDF ================= */
+function gerarPDF(dados){
+  try{
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const margin = 12;
+
+    function desenharHeader(){
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.setTextColor(14,107,79);
+      doc.text('cepe', margin, 16);
+      doc.setFontSize(8); doc.setTextColor(10,78,58);
+      doc.text('DOC', margin, 20);
+      doc.setFontSize(9); doc.setTextColor(70,70,70);
+      doc.text('cepe.com.br', 210 - margin, 14, { align: 'right' });
+      doc.setDrawColor(14,107,79); doc.setLineWidth(0.6);
+      doc.line(margin, 23, 210 - margin, 23);
+      doc.setFontSize(13); doc.setFont('helvetica', 'bold'); doc.setTextColor(20,20,20);
+      doc.text('GUIA DE REMESSA DE DOCUMENTO – GRD', 105, 30, { align: 'center' });
+      doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+      let y = 37;
+      doc.setFont('helvetica','bold'); doc.text('DATA:', margin, y); doc.setFont('helvetica','normal');
+      doc.text(formatarDataBR(dados.data) || '', margin + 12, y);
+      y += 5;
+      doc.setFont('helvetica','bold'); doc.text('ÁREA REMETENTE:', margin, y); doc.setFont('helvetica','normal');
+      doc.text(dados.areaRemetente || '', margin + 33, y);
+      doc.setFont('helvetica','bold'); doc.text('NOME:', 120, y); doc.setFont('helvetica','normal');
+      doc.text((dados.nomeRemetente || '') + '   ASS: ____________', 132, y);
+      y += 5;
+      doc.setFont('helvetica','bold'); doc.text('ÁREA DESTINATÁRIO:', margin, y); doc.setFont('helvetica','normal');
+      doc.text(dados.areaDestinatario || '', margin + 37, y);
+      doc.setFont('helvetica','bold'); doc.text('NOME:', 120, y); doc.setFont('helvetica','normal');
+      doc.text((dados.nomeDestinatario || '') + '   ASS: ____________', 132, y);
+    }
+    function desenharFooter(paginaAtual, totalPaginas){
+      doc.setFontSize(7); doc.setTextColor(90,90,90);
+      doc.text('Rodovia BR-101 Sul 00, KM 96,4 - n 5.225, Galpão 7, Módulo 11, Distrito Industrial Diper. Cabo de Santo Agostinho/PE - CEP: 54503-900', margin, 285);
+      doc.text('CNPJ: 10.921.252/0002-98 | Fone: (81) 3184.5250 | doc@cepe.com.br', margin, 289);
+      doc.text(`Página ${paginaAtual} de ${totalPaginas}`, 210 - margin, 289, { align: 'right' });
+    }
+
+    doc.autoTable({
+      startY: 44,
+      margin: { left: margin, right: margin, top: 44, bottom: 20 },
+      head: [['Item', 'Cliente', 'Setor', 'Objeto', 'Caixa']],
+      body: dados.itens.map((it, idx) => [idx+1, it.cliente, it.setor, it.objeto, it.caixa]),
+      styles: { fontSize: 8, cellPadding: 1.6, lineColor: [150,150,150], lineWidth: 0.1, textColor: [20,20,20] },
+      headStyles: { fillColor: [231,242,237], textColor: [10,78,58], fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [250,251,250] },
+      columnStyles: {
+        0: { cellWidth: 10, halign: 'center' }, 1: { cellWidth: 28 }, 2: { cellWidth: 92 },
+        3: { cellWidth: 22, halign: 'center' }, 4: { cellWidth: 24, halign: 'center' }
+      },
+      didDrawPage: function(){ desenharHeader(); }
+    });
+
+    const totalPaginas = doc.internal.getNumberOfPages();
+    for(let p = 1; p <= totalPaginas; p++){ doc.setPage(p); desenharFooter(p, totalPaginas); }
+
+    doc.save(`GRD_${dados.data || hoje()}.pdf`);
+    mostrarStatus('PDF gerado com sucesso.', 'ok');
+  }catch(e){
+    console.error(e);
+    alert('Não foi possível gerar o PDF automaticamente. Use a opção "Imprimir" e escolha "Salvar como PDF" na janela de impressão.');
+  }
+}
+
+/* ================= BASE DE DADOS / HISTÓRICO ================= */
+async function carregarHistorico(){
+  const raw = await storageGet('historico', true);
+  try{ historico = raw ? JSON.parse(raw) : []; }catch(e){ historico = []; }
+}
+async function salvarHistorico(){ await storageSet('historico', JSON.stringify(historico), true); }
+async function salvarNoHistorico(dados){
+  await carregarHistorico(); // pega o que outros dispositivos já salvaram antes de gravar
+  const idx = historico.findIndex(g => g.id === dados.id);
+  if(idx >= 0) historico[idx] = dados;
+  else historico.unshift(dados);
+  await salvarHistorico();
+  renderHistorico();
+}
+async function atualizarHistorico(){
+  await carregarHistorico();
+  renderHistorico();
+  mostrarStatus('Base de dados atualizada.', 'ok');
+}
+function renderHistorico(){
+  const tbody = document.getElementById('tbody-hist');
+  const tabela = document.getElementById('tabela-hist');
+  const vazio = document.getElementById('hist-empty');
+
+  if(historico.length === 0){
+    tabela.style.display = 'none';
+    vazio.style.display = 'block';
+    return;
+  }
+  vazio.style.display = 'none';
+  tabela.style.display = 'table';
+  tbody.innerHTML = '';
+
+  historico.slice().sort((a,b) => (b.criadoEm||0) - (a.criadoEm||0)).forEach(g => {
+    const clientesUnicos = [...new Set(g.itens.map(i => i.cliente))].join(', ');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${formatarDataBR(g.data)}</td>
+      <td>${escapeHtml(g.areaRemetente || '-')} → ${escapeHtml(g.areaDestinatario || '-')}</td>
+      <td>${escapeHtml(clientesUnicos)}</td>
+      <td class="center">${g.itens.length}</td>
+      <td>
+        <div class="actions-cell">
+          <button class="btn secondary mini" onclick="verHistoricoItem('${g.id}')">Ver / Reimprimir</button>
+          <button class="btn secondary mini" onclick="exportarCSVRegistro('${g.id}')">CSV</button>
+          <button class="btn danger mini" onclick="excluirHistoricoItem('${g.id}')">Excluir</button>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+function buscarHistoricoPorId(id){ return historico.find(g => g.id === id); }
+function verHistoricoItem(id){
+  const dados = buscarHistoricoPorId(id);
+  if(!dados) return;
+  montarFolhaImpressao(dados);
+  abrirModalOpcoesImpressao(dados);
+}
+async function excluirHistoricoItem(id){
+  if(!confirm('Excluir essa GRD da base de dados? Essa ação não pode ser desfeita.')) return;
+  await carregarHistorico();
+  historico = historico.filter(g => g.id !== id);
+  await salvarHistorico();
+  renderHistorico();
+}
+
+/* ================= EXPORTAÇÕES CSV ================= */
+function baixarCSV(nomeArquivo, linhas){
+  let csv = 'DATA;ITEM;CLIENTE;SETOR;OBJETO;CAIXA\n';
+  linhas.forEach(l => { csv += l.join(';') + '\n'; });
+  const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = nomeArquivo; a.click();
+  URL.revokeObjectURL(url);
+}
+function exportarCSVAtual(){
+  if(itens.length === 0){ mostrarStatus('Adicione ao menos um item antes de exportar.', 'warn'); return; }
+  const dataArq = document.getElementById('f-data').value || hoje();
+  const linhas = itens.map((it, idx) => [dataArq, idx+1, it.cliente, it.setor, it.objeto, it.caixa]);
+  baixarCSV(`GRD_${dataArq}.csv`, linhas);
+}
+function exportarCSVRegistro(id){
+  const dados = buscarHistoricoPorId(id);
+  if(!dados) return;
+  const linhas = dados.itens.map((it, idx) => [dados.data, idx+1, it.cliente, it.setor, it.objeto, it.caixa]);
+  baixarCSV(`GRD_${dados.data}.csv`, linhas);
+}
+async function exportarHistoricoCompleto(){
+  await carregarHistorico();
+  if(historico.length === 0){ alert('Ainda não há nenhuma GRD salva na base de dados.'); return; }
+  const linhas = [];
+  historico.forEach(g => { g.itens.forEach((it, idx) => linhas.push([g.data, idx+1, it.cliente, it.setor, it.objeto, it.caixa])); });
+  baixarCSV(`GRD_historico_completo_${hoje()}.csv`, linhas);
+}
+
+/* ================= SESSÃO (GRD em andamento) ================= */
+async function salvarSessao(){
+  const sessao = {
+    grdAtualId,
+    data: document.getElementById('f-data').value,
+    areaRemetente: document.getElementById('f-area-remetente').value,
+    nomeRemetente: document.getElementById('f-nome-remetente').value,
+    areaDestinatario: document.getElementById('f-area-destinatario').value,
+    nomeDestinatario: document.getElementById('f-nome-destinatario').value,
+    cliente: document.getElementById('f-cliente').value,
+    setor: document.getElementById('f-setor').value,
+    itens: itens
+  };
+  await storageSet('sessao_atual', JSON.stringify(sessao), false);
+}
+async function carregarSessao(){
+  const raw = await storageGet('sessao_atual', false);
+  if(!raw) return;
+  try{
+    const s = JSON.parse(raw);
+    grdAtualId = s.grdAtualId || null;
+    if(s.data) document.getElementById('f-data').value = s.data;
+    document.getElementById('f-area-remetente').value = s.areaRemetente || '';
+    document.getElementById('f-nome-remetente').value = s.nomeRemetente || '';
+    document.getElementById('f-area-destinatario').value = s.areaDestinatario || '';
+    document.getElementById('f-nome-destinatario').value = s.nomeDestinatario || '';
+    document.getElementById('f-setor').value = s.setor || '';
+    itens = s.itens || [];
+    if(s.cliente) document.getElementById('f-cliente').value = s.cliente;
+  }catch(e){}
+}
+
+init();
+</script>
+
+</body>
+</html>
