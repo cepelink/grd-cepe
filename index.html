@@ -4,6 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gerador de GRD — CEPE doc</title>
+
+<!-- PWA: instalação com a logo da CEPE -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0E6B4F">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="GRD CEPE">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
@@ -1718,6 +1727,24 @@ async function carregarSessao(){
 }
 
 init();
+
+// PWA: registra o service worker (necessário pro navegador oferecer
+// a opção de "Instalar app" com a logo da CEPE).
+// Só tenta registrar se o sw.js realmente existir nesse endereço — evita
+// erro no preview do Claude, que serve só este arquivo isoladamente.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    fetch('sw.js', { method: 'HEAD' })
+      .then((res) => {
+        if (res.ok) {
+          navigator.serviceWorker.register('sw.js').catch(() => {});
+        }
+      })
+      .catch(() => {
+        // sw.js não está disponível neste endereço (ex: preview isolado) — ignora
+      });
+  });
+}
 </script>
 
 </body>
