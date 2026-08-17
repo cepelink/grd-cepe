@@ -1955,17 +1955,28 @@ async function abrirModalPuxarRecebimento(){
     return;
   }
   await carregarObjetosRecebidos();
+  await carregarHistorico();
+
+  const objetosComGrd = new Set();
+  historico.forEach(g => (g.itens || []).forEach(it => { if(it.objeto) objetosComGrd.add(it.objeto); }));
 
   const objetosJaNaGrd = new Set(itens.map(it => it.objeto));
-  const candidatos = Object.entries(objetosRecebidos)
+  const todosCandidatos = Object.entries(objetosRecebidos)
     .filter(([objeto, info]) => info.cliente === cliente && info.setor === setor)
-    .map(([objeto, info]) => ({ objeto, ...info }))
+    .map(([objeto, info]) => ({ objeto, ...info }));
+  const candidatos = todosCandidatos
+    .filter(c => !objetosComGrd.has(c.objeto))
     .sort((a, b) => (b.data || '').localeCompare(a.data || '') || a.objeto.localeCompare(b.objeto));
+  const qtdComGrd = todosCandidatos.length - candidatos.length;
 
   if(candidatos.length === 0){
+    const motivoExtra = qtdComGrd > 0
+      ? `<div class="hint" style="margin-top:6px;">${qtdComGrd} objeto(s) recebido(s) para esse cliente/setor já têm GRD criada e por isso não aparecem aqui.</div>`
+      : '';
     const html = `
       <h3>Puxar do recebimento</h3>
-      <div class="empty-hint">Nenhum objeto recebido encontrado para "${escapeHtml(cliente)}" / "${escapeHtml(setor)}".</div>
+      <div class="empty-hint">Nenhum objeto recebido pendente de GRD encontrado para "${escapeHtml(cliente)}" / "${escapeHtml(setor)}".</div>
+      ${motivoExtra}
       <div class="modal-close">
         <button class="btn ghost" onclick="fecharModal()">Fechar</button>
       </div>
@@ -1991,9 +2002,14 @@ async function abrirModalPuxarRecebimento(){
 
   window.__candidatosPuxarRecebimento = candidatos;
 
+  const avisoComGrd = qtdComGrd > 0
+    ? `<div class="hint" style="margin-bottom:8px;">${qtdComGrd} objeto(s) já com GRD criada foram ocultados desta lista.</div>`
+    : '';
+
   const html = `
     <h3>Puxar do recebimento — ${escapeHtml(cliente)} / ${escapeHtml(setor)}</h3>
-    <div class="hint" style="margin-bottom:8px;">Marque os objetos que quer adicionar como itens desta GRD.</div>
+    <div class="hint" style="margin-bottom:8px;">Marque os objetos que quer adicionar como itens desta GRD. Só aparecem objetos ainda sem GRD.</div>
+    ${avisoComGrd}
     <label style="display:flex; align-items:center; gap:8px; font-weight:400; cursor:pointer; margin-bottom:8px;">
       <input type="checkbox" id="chk-puxar-todos" onchange="togglePuxarTodos(this.checked)">
       Selecionar todos
