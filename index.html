@@ -505,7 +505,10 @@
   <div class="card">
     <h2>
       Recebimentos registrados
-      <button class="link-btn" onclick="renderRecebimentos()">Atualizar</button>
+      <span>
+        <button class="link-btn" onclick="renderRecebimentos()">Atualizar</button>
+        <button class="link-btn" onclick="exportarCSVRecebimentos()">Exportar tudo (CSV)</button>
+      </span>
     </h2>
     <div id="receb-hist-wrap">
       <div class="empty-state" id="receb-hist-empty">Nenhum recebimento registrado ainda.</div>
@@ -667,10 +670,11 @@
         <thead>
           <tr>
             <th style="width:12%;">Data</th>
-            <th style="width:16%;">Remetente → Destinatário</th>
-            <th style="width:26%;">Cliente(s)</th>
+            <th style="width:14%;">Remetente → Destinatário</th>
+            <th style="width:20%;">Cliente(s)</th>
+            <th style="width:20%;">Setor(es)</th>
             <th class="center" style="width:8%;">Itens</th>
-            <th style="width:24%;">Ações</th>
+            <th style="width:22%;">Ações</th>
           </tr>
         </thead>
         <tbody id="tbody-hist"></tbody>
@@ -2292,11 +2296,13 @@ function renderHistorico(){
 
   historico.slice().sort((a,b) => (b.criadoEm||0) - (a.criadoEm||0)).forEach(g => {
     const clientesUnicos = [...new Set(g.itens.map(i => i.cliente))].join(', ');
+    const setoresUnicos = [...new Set(g.itens.map(i => i.setor).filter(Boolean))].join(', ');
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${formatarDataBR(g.data)}</td>
       <td>${escapeHtml(g.areaRemetente || '-')} → ${escapeHtml(g.areaDestinatario || '-')}</td>
       <td>${escapeHtml(clientesUnicos)}</td>
+      <td>${setoresUnicos ? escapeHtml(setoresUnicos) : '<span class="hint" style="margin:0;">—</span>'}</td>
       <td class="center">${g.itens.length}</td>
       <td>
         <div class="actions-cell">
@@ -3402,6 +3408,7 @@ function renderRecebimentos(){
         <td>${trocasTxt}</td>
         <td class="actions-cell">
           <button class="btn secondary mini" onclick="imprimirObjetosRecebimento('${r.id}')">Imprimir objetos</button>
+          <button class="btn secondary mini" onclick="exportarCSVRecebimento('${r.id}')">CSV</button>
           <button class="btn secondary mini" onclick="abrirModalEditarRecebimento('${r.id}')">Editar</button>
           <button class="btn danger mini" onclick="excluirRecebimento('${r.id}')">Excluir</button>
         </td>
@@ -3458,6 +3465,49 @@ async function exportarHistoricoCompleto(){
   const linhas = [];
   historico.forEach(g => { g.itens.forEach((it, idx) => linhas.push([g.data, idx+1, it.cliente, it.setor, it.objeto, it.caixa])); });
   baixarCSV(`GRD_historico_completo_${hoje()}.csv`, linhas);
+}
+
+/* ---- Exportação CSV — Recebimentos ---- */
+function baixarCSVRecebimentos(nomeArquivo, linhas){
+  let csv = 'DATA;HORA;CLIENTE;SETOR;ENTREGUE POR;RECEBIDO POR;STATUS;ITEM;OBJETO;TIPO DE CAIXA;REF. CLIENTE\n';
+  linhas.forEach(l => { csv += l.join(';') + '\n'; });
+  const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = nomeArquivo; a.click();
+  URL.revokeObjectURL(url);
+}
+function linhasCSVRecebimento(r){
+  const entregador = r.entregador || {};
+  const objetos = (r.objetos && r.objetos.length) ? r.objetos : [{ objeto: '', tipo: '', refCliente: '' }];
+  return objetos.map((it, idx) => [
+    r.data || '',
+    r.hora || '',
+    r.cliente || '',
+    r.setor || '',
+    entregador.nome || '',
+    r.recebidoPor || '',
+    r.status || '',
+    idx + 1,
+    it.objeto || '',
+    it.tipo || '',
+    it.refCliente || ''
+  ]);
+}
+function nomeArquivoSeguro(txt){
+  return String(txt || '').trim().replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '') || 'recebimento';
+}
+function exportarCSVRecebimento(id){
+  const r = recebimentos.find(x => x.id === id);
+  if(!r) return;
+  baixarCSVRecebimentos(`Recebimento_${r.data || hoje()}_${nomeArquivoSeguro(r.cliente)}.csv`, linhasCSVRecebimento(r));
+}
+async function exportarCSVRecebimentos(){
+  await carregarRecebimentos();
+  if(recebimentos.length === 0){ alert('Ainda não há nenhum recebimento registrado na base de dados.'); return; }
+  const linhas = [];
+  recebimentos.slice().sort((a,b) => (b.criadoEm||0) - (a.criadoEm||0)).forEach(r => { linhas.push(...linhasCSVRecebimento(r)); });
+  baixarCSVRecebimentos(`Recebimentos_historico_completo_${hoje()}.csv`, linhas);
 }
 
 /* ================= SESSÃO (GRD em andamento) ================= */
