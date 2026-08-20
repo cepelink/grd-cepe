@@ -1661,7 +1661,7 @@ function agruparRelatorio(tipoPeriodo, detalhar){
   Object.keys(grupos).forEach(chave => {
     const trocas = trocasPorGrupo[chave];
     grupos[chave].trocas = trocas ? { total: trocas.total, porTipo: trocas.porTipo } : { total: 0, porTipo: {} };
-    grupos[chave].totalComTrocas = grupos[chave].total + grupos[chave].trocas.total;
+    grupos[chave].totalComTrocas = grupos[chave].total;
   });
   return Object.values(grupos).sort((a,b) => {
     if(a.chavePeriodo !== b.chavePeriodo) return a.chavePeriodo < b.chavePeriodo ? 1 : -1;
