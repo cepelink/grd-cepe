@@ -620,9 +620,16 @@
         <button class="btn block" onclick="adicionarItem()">Adicionar</button>
       </div>
     </div>
+    <div class="field" style="margin-top:10px; max-width:520px;">
+      <label style="display:flex; align-items:center; gap:8px; font-weight:400; cursor:pointer;">
+        <input type="checkbox" id="f-mesma-caixa" style="width:auto;" onchange="onMesmaCaixaGrdChange()">
+        Este objeto está na mesma caixa física do último objeto bipado
+      </label>
+      <div class="hint" id="hint-mesma-caixa-grd" style="margin-top:4px;">Objetos marcados como mesma caixa física ficam agrupados um do lado do outro na hora de imprimir/gerar o PDF da GRD, com aviso de "mesma caixa".</div>
+    </div>
     <div class="field" style="margin-top:10px;">
       <button type="button" class="btn secondary" onclick="abrirModalPuxarRecebimento()">📥 Puxar caixas já recebidas (por cliente/setor)</button>
-      <div class="hint">Mostra os objetos já registrados na aba Recebimento para o cliente e setor selecionados acima, para você escolher quais entram nesta GRD.</div>
+      <div class="hint">Mostra os objetos já registrados na aba Recebimento para o cliente e setor selecionados acima, para você escolher quais entram nesta GRD. Objetos que já estavam marcados como mesma caixa no recebimento continuam agrupados aqui.</div>
     </div>
     <div id="status" class="status-msg"></div>
   </div>
@@ -1925,19 +1932,51 @@ async function adicionarItem(){
   await adicionarSetorCadastro(cliente, setor);
   if(!grdAtualId) grdAtualId = gerarId();
 
-  itens.push({ cliente, setor, objeto, caixa: caixaTipoAtual });
+  const chkMesmaCaixa = document.getElementById('f-mesma-caixa');
+  const ultimo = itens[itens.length - 1];
+  let caixaId, msgExtra = '';
+  if(chkMesmaCaixa && chkMesmaCaixa.checked && ultimo){
+    caixaId = ultimo.caixaId || ultimo.objeto;
+    msgExtra = ' — na mesma caixa do objeto ' + ultimo.objeto;
+  }else{
+    caixaId = objeto;
+  }
+
+  itens.push({ cliente, setor, objeto, caixa: caixaTipoAtual, caixaId });
+  if(chkMesmaCaixa && chkMesmaCaixa.checked){
+    chkMesmaCaixa.checked = false;
+    onMesmaCaixaGrdChange();
+  }
 
   objetoInput.value = '';
   document.getElementById('preview-objeto').textContent = '';
   objetoInput.focus();
-  mostrarStatus('Item ' + itens.length + ' adicionado: ' + objeto + ' (' + caixaTipoAtual + ')', 'ok');
+  mostrarStatus('Item ' + itens.length + ' adicionado: ' + objeto + ' (' + caixaTipoAtual + ')' + msgExtra, 'ok');
   renderTabela();
   await salvarSessao();
 }
 async function removerItem(idx){
   itens.splice(idx, 1);
+  const chkMesmaCaixa = document.getElementById('f-mesma-caixa');
+  if(chkMesmaCaixa){ chkMesmaCaixa.checked = false; onMesmaCaixaGrdChange(); }
   renderTabela();
   await salvarSessao();
+}
+function onMesmaCaixaGrdChange(){
+  const chk = document.getElementById('f-mesma-caixa');
+  const toggleWrap = document.getElementById('toggle-caixa');
+  const hint = document.getElementById('hint-mesma-caixa-grd');
+  if(!chk || !toggleWrap || !hint) return;
+  const ultimo = itens[itens.length - 1];
+  if(chk.checked && ultimo){
+    toggleWrap.style.opacity = '0.5';
+    toggleWrap.style.pointerEvents = 'none';
+    hint.textContent = 'Este objeto será agrupado na mesma caixa do objeto ' + ultimo.objeto + ' (caixa: ' + ultimo.caixa + ').';
+  }else{
+    toggleWrap.style.opacity = '';
+    toggleWrap.style.pointerEvents = '';
+    hint.textContent = 'Objetos marcados como mesma caixa física ficam agrupados um do lado do outro na hora de imprimir/gerar o PDF da GRD, com aviso de "mesma caixa".';
+  }
 }
 
 /* ================= PUXAR OBJETOS JÁ REGISTRADOS NO RECEBIMENTO ================= */
@@ -2059,7 +2098,7 @@ async function confirmarPuxarRecebimento(){
   marcados.forEach(c => {
     if(objetosJaNaGrd.has(c.objeto)) return;
     const tipo = tiposCaixa.includes(c.tipo) ? c.tipo : (tiposCaixa[0] || c.tipo);
-    itens.push({ cliente, setor, objeto: c.objeto, caixa: tipo });
+    itens.push({ cliente, setor, objeto: c.objeto, caixa: tipo, caixaId: c.caixaId || c.objeto });
     objetosJaNaGrd.add(c.objeto);
     adicionados++;
   });
@@ -2094,12 +2133,20 @@ function renderTabela(){
   vazio.style.display = 'none';
   tabela.style.display = 'table';
   tbody.innerHTML = '';
+  const caixaNum = {};
+  let seqCaixa = 0;
+  itens.forEach(it => {
+    const chave = it.caixaId || it.objeto;
+    if(!(chave in caixaNum)){ seqCaixa++; caixaNum[chave] = seqCaixa; }
+  });
   itens.forEach((it, idx) => {
+    const chave = it.caixaId || it.objeto;
+    const agrupado = itens.filter(x => (x.caixaId || x.objeto) === chave).length > 1;
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td class="center">${idx+1}</td>
       <td>${escapeHtml(it.cliente)}</td>
-      <td>${escapeHtml(it.setor)}</td>
+      <td>${escapeHtml(it.setor)}${agrupado ? ' <span class="tag-badge">🔗 mesma caixa ' + caixaNum[chave] + '</span>' : ''}</td>
       <td class="center"><input class="row-edit" style="text-align:center;" value="${escapeHtml(it.objeto)}" onchange="atualizarCampoItem(${idx},'objeto',this.value)"></td>
       <td class="center">
         <select class="row-edit" onchange="atualizarCampoItem(${idx},'caixa',this.value)">
@@ -2130,6 +2177,8 @@ async function novaGRD(){
   renderSetorSelect();
   document.getElementById('f-objeto').value = '';
   document.getElementById('preview-objeto').textContent = '';
+  const chkMesmaCaixaReset = document.getElementById('f-mesma-caixa');
+  if(chkMesmaCaixaReset){ chkMesmaCaixaReset.checked = false; onMesmaCaixaGrdChange(); }
   renderTabela();
   await salvarSessao();
   document.getElementById('f-objeto').focus();
@@ -2150,6 +2199,27 @@ function dadosGrdAtual(){
   };
 }
 
+/* ================= AGRUPAMENTO POR CAIXA (IMPRESSÃO) ================= */
+// Reordena os itens para impressão/PDF de forma que objetos da mesma caixa física
+// fiquem um ao lado do outro, e sinaliza cada item agrupado com o número da caixa.
+function ordenarAgruparPorCaixaImpressao(itensArr){
+  const chaveDe = it => it.caixaId || it.objeto;
+  const caixaNum = {};
+  const ordemChave = [];
+  const grupos = {};
+  itensArr.forEach(it => {
+    const chave = chaveDe(it);
+    if(!(chave in caixaNum)){ caixaNum[chave] = ordemChave.length + 1; ordemChave.push(chave); }
+    (grupos[chave] = grupos[chave] || []).push(it);
+  });
+  const ordenados = [];
+  ordemChave.forEach(chave => { ordenados.push(...grupos[chave]); });
+  return ordenados.map(it => {
+    const chave = chaveDe(it);
+    return Object.assign({}, it, { __caixaNum: caixaNum[chave], __agrupado: grupos[chave].length > 1 });
+  });
+}
+
 /* ================= FOLHA DE IMPRESSÃO ================= */
 function montarFolhaImpressao(dados){
   document.getElementById('p-data').textContent = formatarDataBR(dados.data);
@@ -2161,13 +2231,14 @@ function montarFolhaImpressao(dados){
   document.getElementById('p-instrucoes-caixas-row').style.display = dados.instrucoesCaixas ? '' : 'none';
   const tbody = document.getElementById('p-tbody');
   tbody.innerHTML = '';
-  dados.itens.forEach((it, idx) => {
+  const itensOrdenados = ordenarAgruparPorCaixaImpressao(dados.itens);
+  itensOrdenados.forEach((it, idx) => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td class="col-item">${idx+1}</td>
       <td class="col-cliente">${escapeHtml(it.cliente)}</td>
       <td class="col-setor">${escapeHtml(it.setor)}</td>
-      <td class="col-objeto">${escapeHtml(it.objeto)}</td>
+      <td class="col-objeto">${escapeHtml(it.objeto)}${it.__agrupado ? ' <span style="font-size:9px; font-weight:700; color:#0A4E3A;">(mesma caixa ' + it.__caixaNum + ')</span>' : ''}</td>
       <td class="col-caixa">${escapeHtml(it.caixa)}</td>
     `;
     tbody.appendChild(tr);
@@ -2251,11 +2322,12 @@ function gerarPDF(dados){
       doc.text(`Página ${paginaAtual} de ${totalPaginas}`, 210 - margin, 289, { align: 'right' });
     }
 
+    const itensOrdenadosPdf = ordenarAgruparPorCaixaImpressao(dados.itens);
     doc.autoTable({
       startY: 54,
       margin: { left: margin, right: margin, top: 54, bottom: 20 },
       head: [['Item', 'Cliente', 'Setor', 'Objeto', 'Caixa']],
-      body: dados.itens.map((it, idx) => [idx+1, it.cliente, it.setor, it.objeto, it.caixa]),
+      body: itensOrdenadosPdf.map((it, idx) => [idx+1, it.cliente, it.setor, it.objeto + (it.__agrupado ? ` (mesma caixa ${it.__caixaNum})` : ''), it.caixa]),
       styles: { fontSize: 8, cellPadding: 1.6, lineColor: [150,150,150], lineWidth: 0.1, textColor: [20,20,20] },
       headStyles: { fillColor: [231,242,237], textColor: [10,78,58], fontStyle: 'bold' },
       alternateRowStyles: { fillColor: [250,251,250] },
@@ -2946,7 +3018,7 @@ async function registrarRecebimento(){
 
   await carregarObjetosRecebidos();
   itensRecebimentoAtual.forEach(it => {
-    objetosRecebidos[it.objeto] = { tipo: it.tipo, cliente, setor, data, hora, status, refCliente: it.refCliente || '' };
+    objetosRecebidos[it.objeto] = { tipo: it.tipo, cliente, setor, data, hora, status, refCliente: it.refCliente || '', caixaId: it.caixaId || it.objeto };
   });
   await salvarObjetosRecebidos();
 
@@ -3277,7 +3349,7 @@ async function salvarEdicaoRecebimento(){
 
   await carregarObjetosRecebidos();
   itensEdicaoRecebimento.forEach(it => {
-    objetosRecebidos[it.objeto] = { tipo: it.tipo, cliente, setor, data, hora, status, refCliente: it.refCliente || '' };
+    objetosRecebidos[it.objeto] = { tipo: it.tipo, cliente, setor, data, hora, status, refCliente: it.refCliente || '', caixaId: it.caixaId || it.objeto };
   });
   await salvarObjetosRecebidos();
 
