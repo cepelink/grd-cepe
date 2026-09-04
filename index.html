@@ -399,14 +399,14 @@
     <div class="grid grid-2" style="margin-top:12px; max-width:520px;">
       <div class="field">
         <label for="f-receb-intervalo-refcli-inicio">Nº caixa do cliente inicial (opcional)</label>
-        <input type="text" id="f-receb-intervalo-refcli-inicio" placeholder="Ex: 900" autocomplete="off">
+        <input type="text" id="f-receb-intervalo-refcli-inicio" placeholder="Ex: 900 ou diversos 1" autocomplete="off">
       </div>
       <div class="field">
         <label for="f-receb-intervalo-refcli-fim">Nº caixa do cliente final (opcional)</label>
-        <input type="text" id="f-receb-intervalo-refcli-fim" placeholder="Ex: 903" autocomplete="off">
+        <input type="text" id="f-receb-intervalo-refcli-fim" placeholder="Ex: 903 ou diversos 34" autocomplete="off">
       </div>
     </div>
-    <div class="hint" style="margin-top:4px;">Se preencher essa faixa, cada objeto do intervalo é vinculado, na ordem, a um número da caixa do cliente (precisa ter a mesma quantidade de itens da faixa de objetos).</div>
+    <div class="hint" style="margin-top:4px;">Se preencher essa faixa, cada objeto do intervalo é vinculado, na ordem, a um nº da caixa do cliente (precisa ter a mesma quantidade de itens da faixa de objetos). Pode usar texto junto do número, ex: "diversos 1" até "diversos 34" gera diversos 1, diversos 2, diversos 3... diversos 34.</div>
     <div class="hint" id="intervalo-preview-qtd" style="margin-top:8px;"></div>
   </div>
 
@@ -2693,20 +2693,27 @@ function atualizarPreviewIntervalo(){
   const refIniRaw = refIniEl ? refIniEl.value.trim() : '';
   const refFimRaw = refFimEl ? refFimEl.value.trim() : '';
   if(refIniRaw && refFimRaw){
-    const refDigIni = refIniRaw.replace(/\D/g, '');
-    const refDigFim = refFimRaw.replace(/\D/g, '');
-    const refNumIni = parseInt(refDigIni, 10);
-    const refNumFim = parseInt(refDigFim, 10);
-    if(!isNaN(refNumIni) && !isNaN(refNumFim)){
-      const totalRef = Math.abs(refNumFim - refNumIni) + 1;
-      if(totalRef !== total){
-        texto += ' ⚠️ A faixa de nº do cliente tem ' + totalRef + ' item(ns) — precisa ter a mesma quantidade dos objetos (' + total + ').';
+    const refIni = parseRefClienteFaixa(refIniRaw);
+    const refFim = parseRefClienteFaixa(refFimRaw);
+    if(refIni && refFim){
+      if(refIni.prefixo !== refFim.prefixo || refIni.sufixo !== refFim.sufixo){
+        texto += ' ⚠️ O texto antes/depois do número precisa ser igual no inicial e no final (ex: "diversos 1" e "diversos 34").';
       }else{
-        texto += ' Vinculado ao nº da caixa do cliente ' + refDigIni + ' a ' + refDigFim + '.';
+        const totalRef = Math.abs(refFim.numero - refIni.numero) + 1;
+        if(totalRef !== total){
+          texto += ' ⚠️ A faixa de nº do cliente tem ' + totalRef + ' item(ns) — precisa ter a mesma quantidade dos objetos (' + total + ').';
+        }else{
+          texto += ' Vinculado ao nº da caixa do cliente ' + refIniRaw + ' a ' + refFimRaw + '.';
+        }
       }
     }
   }
   preview.textContent = texto;
+}
+function parseRefClienteFaixa(raw){
+  const m = String(raw || '').match(/^(\D*)(\d+)(\D*)$/);
+  if(!m) return null;
+  return { prefixo: m[1], numeroTxt: m[2], numero: parseInt(m[2], 10), sufixo: m[3], largura: m[2].length };
 }
 function adicionarIntervaloRecebimento(){
   const iniInput = document.getElementById('f-receb-intervalo-inicio');
@@ -2744,27 +2751,33 @@ function adicionarIntervaloRecebimento(){
   }
 
   let usarRefCliente = false;
-  let refNumIni = 0, refNumFim = 0, refLargura = 0, refCrescente = true;
+  let refNumIni = 0, refLargura = 0, refCrescente = true, refPrefixo = '', refSufixo = '';
   if(refIniRaw || refFimRaw){
     if(!refIniRaw || !refFimRaw){
       mostrarStatus('Informe o nº da caixa do cliente inicial e final, ou deixe os dois em branco.', 'warn', 'receb-status');
       return;
     }
-    const refDigIni = refIniRaw.replace(/\D/g, '');
-    const refDigFim = refFimRaw.replace(/\D/g, '');
-    refNumIni = parseInt(refDigIni, 10);
-    refNumFim = parseInt(refDigFim, 10);
-    if(!refDigIni || !refDigFim || isNaN(refNumIni) || isNaN(refNumFim)){
+    const refIni = parseRefClienteFaixa(refIniRaw);
+    const refFim = parseRefClienteFaixa(refFimRaw);
+    if(!refIni || !refFim){
       mostrarStatus('Não consegui ler os números da caixa do cliente.', 'error', 'receb-status');
       return;
     }
-    const totalRef = Math.abs(refNumFim - refNumIni) + 1;
+    if(refIni.prefixo !== refFim.prefixo || refIni.sufixo !== refFim.sufixo){
+      mostrarStatus('O texto antes/depois do número precisa ser igual no inicial e no final (ex: "diversos 1" e "diversos 34").', 'error', 'receb-status');
+      return;
+    }
+    const totalRef = Math.abs(refFim.numero - refIni.numero) + 1;
     if(totalRef !== totalIntervalo){
       mostrarStatus('A faixa de nº da caixa do cliente tem ' + totalRef + ' item(ns), mas o intervalo de objetos tem ' + totalIntervalo + '. As duas quantidades precisam ser iguais para vincular.', 'error', 'receb-status');
       return;
     }
-    refLargura = Math.max(refDigIni.length, refDigFim.length);
-    refCrescente = refNumFim >= refNumIni;
+    refNumIni = refIni.numero;
+    const refComZero = refIni.numeroTxt.startsWith('0') || refFim.numeroTxt.startsWith('0');
+    refLargura = refComZero ? Math.max(refIni.largura, refFim.largura) : 0;
+    refCrescente = refFim.numero >= refIni.numero;
+    refPrefixo = refIni.prefixo;
+    refSufixo = refIni.sufixo;
     usarRefCliente = true;
   }
 
@@ -2777,7 +2790,7 @@ function adicionarIntervaloRecebimento(){
     let refCliente = '';
     if(usarRefCliente){
       const refNum = refCrescente ? (refNumIni + passo) : (refNumIni - passo);
-      refCliente = String(refNum).padStart(refLargura, '0');
+      refCliente = refPrefixo + String(refNum).padStart(refLargura, '0') + refSufixo;
     }
     itensRecebimentoAtual.push({ objeto, tipo: intervaloCaixaTipoAtual, caixaId: objeto, refCliente });
     adicionados++;
