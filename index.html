@@ -289,6 +289,7 @@
   .col-setor{ width: 47%; }
   .col-objeto{ width: 15%; text-align:center; }
   .col-caixa{ width: 17%; text-align:center; }
+  .col-refcliente{ width: 15%; text-align:center; }
   .sheet-title-row{ background:#EFEFEF !important; text-align:center; font-weight:800; letter-spacing:0.5px; }
   .sheet-footer{ margin-top: 22px; padding-top: 8px; border-top: 1px solid #bbb; font-size: 9.5px; color: #333; display:flex; justify-content:space-between; align-items:center; }
 </style>
@@ -786,13 +787,14 @@
     </div>
     <table class="sheet-table">
       <thead>
-        <tr><th colspan="5" class="sheet-title-row">Dados documento e caixa</th></tr>
+        <tr><th colspan="5" class="sheet-title-row" id="p-title-row">Dados documento e caixa</th></tr>
         <tr>
           <th class="col-item">Item</th>
           <th class="col-cliente">Cliente</th>
           <th class="col-setor">Setor</th>
           <th class="col-objeto">Objeto</th>
           <th class="col-caixa">Caixa</th>
+          <th class="col-refcliente" id="p-th-refcliente" style="display:none;">Nº caixa cliente</th>
         </tr>
       </thead>
       <tbody id="p-tbody"></tbody>
@@ -1942,7 +1944,9 @@ async function adicionarItem(){
     caixaId = objeto;
   }
 
-  itens.push({ cliente, setor, objeto, caixa: caixaTipoAtual, caixaId });
+  const infoRecebida = objetosRecebidos[objeto];
+  const refCliente = (infoRecebida && infoRecebida.refCliente) ? infoRecebida.refCliente : '';
+  itens.push({ cliente, setor, objeto, caixa: caixaTipoAtual, caixaId, refCliente });
   if(chkMesmaCaixa && chkMesmaCaixa.checked){
     chkMesmaCaixa.checked = false;
     onMesmaCaixaGrdChange();
@@ -2098,7 +2102,7 @@ async function confirmarPuxarRecebimento(){
   marcados.forEach(c => {
     if(objetosJaNaGrd.has(c.objeto)) return;
     const tipo = tiposCaixa.includes(c.tipo) ? c.tipo : (tiposCaixa[0] || c.tipo);
-    itens.push({ cliente, setor, objeto: c.objeto, caixa: tipo, caixaId: c.caixaId || c.objeto });
+    itens.push({ cliente, setor, objeto: c.objeto, caixa: tipo, caixaId: c.caixaId || c.objeto, refCliente: c.refCliente || '' });
     objetosJaNaGrd.add(c.objeto);
     adicionados++;
   });
@@ -2221,7 +2225,7 @@ function ordenarAgruparPorCaixaImpressao(itensArr){
 }
 
 /* ================= FOLHA DE IMPRESSÃO ================= */
-function montarFolhaImpressao(dados){
+function montarFolhaImpressao(dados, incluirRefCliente){
   document.getElementById('p-data').textContent = formatarDataBR(dados.data);
   document.getElementById('p-area-remetente').textContent = dados.areaRemetente || '';
   document.getElementById('p-nome-remetente').textContent = dados.nomeRemetente || '';
@@ -2229,6 +2233,12 @@ function montarFolhaImpressao(dados){
   document.getElementById('p-nome-destinatario').textContent = dados.nomeDestinatario || '';
   document.getElementById('p-instrucoes-caixas').textContent = dados.instrucoesCaixas || '';
   document.getElementById('p-instrucoes-caixas-row').style.display = dados.instrucoesCaixas ? '' : 'none';
+
+  const thRef = document.getElementById('p-th-refcliente');
+  const tituloRow = document.getElementById('p-title-row');
+  if(thRef) thRef.style.display = incluirRefCliente ? '' : 'none';
+  if(tituloRow) tituloRow.colSpan = incluirRefCliente ? 6 : 5;
+
   const tbody = document.getElementById('p-tbody');
   tbody.innerHTML = '';
   const itensOrdenados = ordenarAgruparPorCaixaImpressao(dados.itens);
@@ -2240,6 +2250,7 @@ function montarFolhaImpressao(dados){
       <td class="col-setor">${escapeHtml(it.setor)}</td>
       <td class="col-objeto">${escapeHtml(it.objeto)}${it.__agrupado ? ' <span style="font-size:9px; font-weight:700; color:#0A4E3A;">(mesma caixa ' + it.__caixaNum + ')</span>' : ''}</td>
       <td class="col-caixa">${escapeHtml(it.caixa)}</td>
+      ${incluirRefCliente ? `<td class="col-refcliente" style="display:${incluirRefCliente ? '' : 'none'};">${escapeHtml(it.refCliente || '')}</td>` : ''}
     `;
     tbody.appendChild(tr);
   });
@@ -2253,20 +2264,28 @@ async function abrirModalImprimirAtual(){
   }
   const dados = dadosGrdAtual();
   grdAtualId = dados.id;
-  montarFolhaImpressao(dados);
+  montarFolhaImpressao(dados, false);
   await salvarNoHistorico(dados);
   abrirModalOpcoesImpressao(dados);
 }
 function abrirModalOpcoesImpressao(dados){
+  window.__dadosImpressaoAtual = dados;
   const pdfDisponivel = !!(window.jspdf && window.jspdf.jsPDF);
   const html = `
     <h3>Como você quer gerar a GRD?</h3>
+    <div style="margin-bottom:14px; padding:10px 12px; background: var(--verde-claro); border-radius:8px;">
+      <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:700; font-size:13px; color: var(--verde-escuro); text-transform:none;">
+        <input type="checkbox" id="chk-incluir-ref-cliente-imp" style="width:18px;height:18px;">
+        Incluir nº da caixa do cliente cadastrada
+      </label>
+      <div class="hint" style="margin-top:4px;">Adiciona uma coluna com o nº/etiqueta da caixa do cliente registrada no recebimento (quando o objeto tiver essa referência cadastrada).</div>
+    </div>
     <div class="imprimir-opcoes">
-      <div class="opcao-card" onclick="fecharModal(); acionarImpressao();">
+      <div class="opcao-card" onclick="confirmarImpressaoGRD('imprimir')">
         <div class="ico">🖨️</div>
         <div class="txt"><strong>Imprimir</strong><span>Abre a janela de impressão do navegador.</span></div>
       </div>
-      <div class="opcao-card" style="${pdfDisponivel ? '' : 'opacity:0.5; cursor:not-allowed;'}" onclick="${pdfDisponivel ? `fecharModal(); gerarPDF(${JSON.stringify(dados).replace(/"/g,'&quot;')});` : ''}">
+      <div class="opcao-card" style="${pdfDisponivel ? '' : 'opacity:0.5; cursor:not-allowed;'}" onclick="${pdfDisponivel ? `confirmarImpressaoGRD('pdf')` : ''}">
         <div class="ico">📄</div>
         <div class="txt"><strong>Salvar em PDF</strong><span>${pdfDisponivel ? 'Baixa o arquivo PDF direto no computador.' : 'Indisponível sem internet — use "Imprimir" e escolha "Salvar como PDF" na janela.'}</span></div>
       </div>
@@ -2275,10 +2294,23 @@ function abrirModalOpcoesImpressao(dados){
   `;
   abrirModal(html);
 }
+function confirmarImpressaoGRD(tipo){
+  const dados = window.__dadosImpressaoAtual;
+  if(!dados) return;
+  const chk = document.getElementById('chk-incluir-ref-cliente-imp');
+  const incluirRefCliente = !!(chk && chk.checked);
+  montarFolhaImpressao(dados, incluirRefCliente);
+  fecharModal();
+  if(tipo === 'pdf'){
+    gerarPDF(dados, incluirRefCliente);
+  }else{
+    acionarImpressao();
+  }
+}
 function acionarImpressao(){ window.print(); }
 
 /* ================= GERAÇÃO DE PDF ================= */
-function gerarPDF(dados){
+function gerarPDF(dados, incluirRefCliente){
   try{
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
@@ -2323,18 +2355,32 @@ function gerarPDF(dados){
     }
 
     const itensOrdenadosPdf = ordenarAgruparPorCaixaImpressao(dados.itens);
+    const cabecalhoTabela = incluirRefCliente
+      ? ['Item', 'Cliente', 'Setor', 'Objeto', 'Caixa', 'Nº caixa cliente']
+      : ['Item', 'Cliente', 'Setor', 'Objeto', 'Caixa'];
+    const corpoTabela = itensOrdenadosPdf.map((it, idx) => {
+      const linha = [idx+1, it.cliente, it.setor, it.objeto + (it.__agrupado ? ` (mesma caixa ${it.__caixaNum})` : ''), it.caixa];
+      if(incluirRefCliente) linha.push(it.refCliente || '');
+      return linha;
+    });
+    const estiloColunas = incluirRefCliente
+      ? {
+          0: { cellWidth: 10, halign: 'center' }, 1: { cellWidth: 24 }, 2: { cellWidth: 76 },
+          3: { cellWidth: 20, halign: 'center' }, 4: { cellWidth: 20, halign: 'center' }, 5: { cellWidth: 26, halign: 'center' }
+        }
+      : {
+          0: { cellWidth: 10, halign: 'center' }, 1: { cellWidth: 28 }, 2: { cellWidth: 92 },
+          3: { cellWidth: 22, halign: 'center' }, 4: { cellWidth: 24, halign: 'center' }
+        };
     doc.autoTable({
       startY: 54,
       margin: { left: margin, right: margin, top: 54, bottom: 20 },
-      head: [['Item', 'Cliente', 'Setor', 'Objeto', 'Caixa']],
-      body: itensOrdenadosPdf.map((it, idx) => [idx+1, it.cliente, it.setor, it.objeto + (it.__agrupado ? ` (mesma caixa ${it.__caixaNum})` : ''), it.caixa]),
+      head: [cabecalhoTabela],
+      body: corpoTabela,
       styles: { fontSize: 8, cellPadding: 1.6, lineColor: [150,150,150], lineWidth: 0.1, textColor: [20,20,20] },
       headStyles: { fillColor: [231,242,237], textColor: [10,78,58], fontStyle: 'bold' },
       alternateRowStyles: { fillColor: [250,251,250] },
-      columnStyles: {
-        0: { cellWidth: 10, halign: 'center' }, 1: { cellWidth: 28 }, 2: { cellWidth: 92 },
-        3: { cellWidth: 22, halign: 'center' }, 4: { cellWidth: 24, halign: 'center' }
-      },
+      columnStyles: estiloColunas,
       didDrawPage: function(){ desenharHeader(); }
     });
 
