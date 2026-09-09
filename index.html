@@ -139,6 +139,25 @@
     cursor:pointer; text-decoration: underline; padding: 4px 0;
   }
 
+  .dash-kpis{ display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .dash-kpi{
+    background: var(--branco); border: 1px solid var(--cinza-borda); border-radius: 10px;
+    padding: 16px 14px; text-align:center;
+  }
+  .dash-kpi .dash-kpi-valor{ font-size: 26px; font-weight: 800; color: var(--verde-escuro); line-height:1.1; }
+  .dash-kpi .dash-kpi-label{ font-size: 11px; color:#6b756f; text-transform:uppercase; letter-spacing:0.4px; margin-top:6px; }
+  .dash-charts-grid{ display:grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 800px){ .dash-charts-grid{ grid-template-columns: 1fr; } }
+  .barra-linha{ display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .barra-linha:last-child{ margin-bottom:0; }
+  .barra-linha .barra-label{
+    width: 118px; flex-shrink:0; font-size: 12px; color:#55605A;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .barra-linha .barra-trilho{ flex:1; background: var(--verde-claro); border-radius:6px; height:18px; overflow:hidden; }
+  .barra-linha .barra-fill{ background: var(--verde); height:100%; border-radius:6px; min-width:2px; }
+  .barra-linha .barra-valor{ width:34px; text-align:right; font-size:12px; font-weight:700; color: var(--verde-escuro); flex-shrink:0; }
+
   .grid{ display:grid; gap: 12px; }
   .grid-4{ grid-template-columns: repeat(4, 1fr); }
   .grid-3{ grid-template-columns: repeat(3, 1fr); }
@@ -311,6 +330,7 @@
     <button class="tab-btn active" id="tab-btn-recebimento" onclick="mostrarAba('recebimento')">📥 Recebimento</button>
     <button class="tab-btn" id="tab-btn-gerador" onclick="mostrarAba('gerador')">📋 Gerador de GRD</button>
     <button class="tab-btn" id="tab-btn-relatorio" onclick="mostrarAba('relatorio')">📊 Relatórios</button>
+    <button class="tab-btn" id="tab-btn-dashboard" onclick="mostrarAba('dashboard')">📈 Dashboard</button>
   </div>
 
   <!-- RECEBIMENTO -->
@@ -750,6 +770,91 @@
         <button class="btn secondary" onclick="imprimirRelatorio()">🖨️ Imprimir relatório</button>
         <button class="btn secondary" onclick="exportarRelatorioCSV()">Exportar CSV</button>
       </div>
+    </div>
+
+    <div class="card" id="card-trocas-detalhe" style="display:none;">
+      <h2>
+        Detalhamento das caixas trocadas
+        <button class="link-btn" onclick="exportarCSVTrocasDetalhado()">Exportar CSV</button>
+      </h2>
+      <div class="hint" style="margin-top:-4px; margin-bottom:12px;">Cada linha abaixo é um recebimento individual em que houve troca de caixa (ex: caixa avariada trocada por uma nova). Mostra exatamente quando, com quem e quantas caixas de cada tipo foram trocadas nesse recebimento — os mesmos filtros de Cliente e Setor selecionados acima se aplicam aqui.</div>
+      <div id="trocas-detalhe-wrap">
+        <div class="empty-state" id="trocas-detalhe-empty">Nenhuma caixa trocada registrada para os filtros atuais.</div>
+        <table class="hist" id="tabela-trocas-detalhe" style="display:none;">
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Cliente</th>
+              <th>Setor</th>
+              <th>Entregue por</th>
+              <th>Recebido por</th>
+              <th>Status</th>
+              <th class="center">Qtd. trocada</th>
+              <th>Tipo da caixa trocada</th>
+            </tr>
+          </thead>
+          <tbody id="tbody-trocas-detalhe"></tbody>
+          <tfoot id="tfoot-trocas-detalhe"></tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="view-dashboard" style="display:none;">
+    <div class="card">
+      <h2>
+        Painel geral
+        <button class="link-btn" onclick="atualizarDashboard()">Atualizar</button>
+      </h2>
+      <div class="grid grid-3">
+        <div class="field">
+          <label for="dash-periodo">Período</label>
+          <select id="dash-periodo" onchange="renderDashboard()">
+            <option value="mes">Mês atual</option>
+            <option value="30">Últimos 30 dias</option>
+            <option value="90">Últimos 90 dias</option>
+            <option value="ano">Ano atual</option>
+            <option value="tudo">Tudo</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="dash-filtro-cliente">Cliente (filtro)</label>
+          <select id="dash-filtro-cliente" onchange="onFiltroClienteDashboardChange()"></select>
+        </div>
+        <div class="field">
+          <label for="dash-filtro-setor">Setor (filtro)</label>
+          <select id="dash-filtro-setor" onchange="renderDashboard()"></select>
+        </div>
+      </div>
+    </div>
+
+    <div class="dash-kpis" id="dash-kpis"></div>
+
+    <div class="dash-charts-grid">
+      <div class="card">
+        <h2>Caixas recebidas por mês (últimos 6 meses)</h2>
+        <div id="dash-chart-mensal"></div>
+      </div>
+      <div class="card">
+        <h2>Por tipo de caixa (no período)</h2>
+        <div id="dash-chart-tipos"></div>
+      </div>
+    </div>
+
+    <div class="dash-charts-grid">
+      <div class="card">
+        <h2>Status dos recebimentos (no período)</h2>
+        <div id="dash-chart-status"></div>
+      </div>
+      <div class="card">
+        <h2>Top clientes por volume recebido</h2>
+        <div id="dash-top-clientes"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Últimos recebimentos</h2>
+      <div id="dash-recentes"></div>
     </div>
   </div>
 
@@ -1510,10 +1615,155 @@ function mostrarAba(aba){
   document.getElementById('view-recebimento').style.display = aba === 'recebimento' ? '' : 'none';
   document.getElementById('view-gerador').style.display = aba === 'gerador' ? '' : 'none';
   document.getElementById('view-relatorio').style.display = aba === 'relatorio' ? '' : 'none';
+  document.getElementById('view-dashboard').style.display = aba === 'dashboard' ? '' : 'none';
   document.getElementById('tab-btn-recebimento').classList.toggle('active', aba === 'recebimento');
   document.getElementById('tab-btn-gerador').classList.toggle('active', aba === 'gerador');
   document.getElementById('tab-btn-relatorio').classList.toggle('active', aba === 'relatorio');
+  document.getElementById('tab-btn-dashboard').classList.toggle('active', aba === 'dashboard');
   if(aba === 'relatorio'){ atualizarRelatorio(); }
+  if(aba === 'dashboard'){ atualizarDashboard(); }
+}
+
+/* ================= DASHBOARD ================= */
+async function atualizarDashboard(){
+  await carregarRecebimentos();
+  renderFiltrosDashboard();
+  renderDashboard();
+}
+
+function renderFiltrosDashboard(){
+  const clientes = [...new Set(recebimentos.map(r => r.cliente).filter(Boolean))].sort((a,b) => a.localeCompare(b));
+  const selCliente = document.getElementById('dash-filtro-cliente');
+  const clienteAtual = selCliente.value;
+  selCliente.innerHTML = '<option value="">Todos os clientes</option>' +
+    clientes.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  if(clientes.includes(clienteAtual)) selCliente.value = clienteAtual;
+  renderFiltroSetorDashboardOptions();
+}
+
+function renderFiltroSetorDashboardOptions(){
+  const clienteFiltro = document.getElementById('dash-filtro-cliente').value;
+  const base = recebimentos.filter(r => !clienteFiltro || r.cliente === clienteFiltro);
+  const setores = [...new Set(base.map(r => r.setor).filter(Boolean))].sort((a,b) => a.localeCompare(b));
+  const selSetor = document.getElementById('dash-filtro-setor');
+  const setorAtual = selSetor.value;
+  selSetor.innerHTML = '<option value="">Todos os setores</option>' +
+    setores.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+  if(setores.includes(setorAtual)) selSetor.value = setorAtual;
+}
+
+function onFiltroClienteDashboardChange(){
+  renderFiltroSetorDashboardOptions();
+  renderDashboard();
+}
+
+function dataISOLocal(d){
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function periodoInicioDashboard(){
+  const v = document.getElementById('dash-periodo').value;
+  const agora = new Date();
+  if(v === 'mes') return dataISOLocal(new Date(agora.getFullYear(), agora.getMonth(), 1));
+  if(v === '30'){ const d = new Date(agora); d.setDate(d.getDate() - 30); return dataISOLocal(d); }
+  if(v === '90'){ const d = new Date(agora); d.setDate(d.getDate() - 90); return dataISOLocal(d); }
+  if(v === 'ano') return agora.getFullYear() + '-01-01';
+  return null; // 'tudo'
+}
+
+function recebimentosFiltradosDashboard(){
+  const inicio = periodoInicioDashboard();
+  const clienteFiltro = document.getElementById('dash-filtro-cliente').value;
+  const setorFiltro = document.getElementById('dash-filtro-setor').value;
+  return recebimentos.filter(r => {
+    if(inicio && (!r.data || r.data < inicio)) return false;
+    if(clienteFiltro && r.cliente !== clienteFiltro) return false;
+    if(setorFiltro && r.setor !== setorFiltro) return false;
+    return true;
+  });
+}
+
+function gerarBarrasHtml(dados){
+  if(!dados.length) return '<div class="empty-state">Sem dados no período.</div>';
+  const max = Math.max(1, ...dados.map(d => d.valor));
+  return dados.map(d => `
+    <div class="barra-linha">
+      <div class="barra-label" title="${escapeHtml(d.label)}">${escapeHtml(d.label)}</div>
+      <div class="barra-trilho"><div class="barra-fill" style="width:${Math.round((d.valor / max) * 100)}%"></div></div>
+      <div class="barra-valor">${d.valor}</div>
+    </div>`).join('');
+}
+
+function renderDashboard(){
+  const lista = recebimentosFiltradosDashboard();
+
+  /* KPIs do período selecionado */
+  const totalCaixas = lista.reduce((s, r) => s + (r.total || 0), 0);
+  const totalRecebimentos = lista.length;
+  const totalAvarias = lista.reduce((s, r) => s + (r.caixasAvariadas || 0), 0);
+  const totalTrocas = lista.reduce((s, r) => s + (r.caixasTrocadas || 0), 0);
+  const clientesAtendidos = new Set(lista.map(r => r.cliente).filter(Boolean)).size;
+
+  document.getElementById('dash-kpis').innerHTML = `
+    <div class="dash-kpi"><div class="dash-kpi-valor">${totalCaixas}</div><div class="dash-kpi-label">Caixas recebidas</div></div>
+    <div class="dash-kpi"><div class="dash-kpi-valor">${totalRecebimentos}</div><div class="dash-kpi-label">Recebimentos</div></div>
+    <div class="dash-kpi"><div class="dash-kpi-valor">${clientesAtendidos}</div><div class="dash-kpi-label">Clientes atendidos</div></div>
+    <div class="dash-kpi"><div class="dash-kpi-valor">${totalAvarias}</div><div class="dash-kpi-label">Caixas com avaria</div></div>
+    <div class="dash-kpi"><div class="dash-kpi-valor">${totalTrocas}</div><div class="dash-kpi-label">Caixas trocadas</div></div>
+  `;
+
+  /* Tendência mensal (últimos 6 meses) — respeita cliente/setor, mas não o filtro de período */
+  const clienteFiltro = document.getElementById('dash-filtro-cliente').value;
+  const setorFiltro = document.getElementById('dash-filtro-setor').value;
+  const baseTendencia = recebimentos.filter(r => (!clienteFiltro || r.cliente === clienteFiltro) && (!setorFiltro || r.setor === setorFiltro));
+  const agora = new Date();
+  const chavesMeses = [];
+  const mesesDados = {};
+  for(let i = 5; i >= 0; i--){
+    const d = new Date(agora.getFullYear(), agora.getMonth() - i, 1);
+    const chave = d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0');
+    chavesMeses.push(chave);
+    mesesDados[chave] = { label: String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(), valor: 0 };
+  }
+  baseTendencia.forEach(r => {
+    if(!r.data) return;
+    const chave = r.data.slice(0, 4) + r.data.slice(5, 7);
+    if(mesesDados[chave]) mesesDados[chave].valor += (r.total || 0);
+  });
+  document.getElementById('dash-chart-mensal').innerHTML = gerarBarrasHtml(chavesMeses.map(c => mesesDados[c]));
+
+  /* Por tipo de caixa (dentro do período/filtros selecionados) */
+  const porTipo = {};
+  lista.forEach(r => (r.tipos || []).forEach(t => { porTipo[t.tipo] = (porTipo[t.tipo] || 0) + (t.quantidade || 0); }));
+  const dadosTipos = Object.keys(porTipo).sort((a, b) => porTipo[b] - porTipo[a]).map(t => ({ label: t, valor: porTipo[t] }));
+  document.getElementById('dash-chart-tipos').innerHTML = gerarBarrasHtml(dadosTipos);
+
+  /* Por status (dentro do período/filtros selecionados) */
+  const porStatus = {};
+  lista.forEach(r => { const s = r.status || '(sem status)'; porStatus[s] = (porStatus[s] || 0) + 1; });
+  const dadosStatus = Object.keys(porStatus).sort((a, b) => porStatus[b] - porStatus[a]).map(s => ({ label: s, valor: porStatus[s] }));
+  document.getElementById('dash-chart-status').innerHTML = gerarBarrasHtml(dadosStatus);
+
+  /* Top clientes por volume recebido (dentro do período/filtros selecionados) */
+  const porCliente = {};
+  lista.forEach(r => { const c = r.cliente || '(sem cliente)'; porCliente[c] = (porCliente[c] || 0) + (r.total || 0); });
+  const topClientes = Object.keys(porCliente).sort((a, b) => porCliente[b] - porCliente[a]).slice(0, 8).map(c => ({ label: c, valor: porCliente[c] }));
+  document.getElementById('dash-top-clientes').innerHTML = gerarBarrasHtml(topClientes);
+
+  /* Últimos recebimentos (dentro do período/filtros selecionados) */
+  const recentes = lista.slice().sort((a, b) => (b.criadoEm || 0) - (a.criadoEm || 0)).slice(0, 6);
+  document.getElementById('dash-recentes').innerHTML = recentes.length ? `
+    <table class="hist">
+      <thead><tr><th>Data</th><th>Cliente</th><th>Setor</th><th class="center">Total</th><th>Status</th></tr></thead>
+      <tbody>${recentes.map(r => `
+        <tr>
+          <td>${formatarDataBR(r.data)}${r.hora ? ' ' + escapeHtml(r.hora) : ''}</td>
+          <td>${escapeHtml(r.cliente || '')}</td>
+          <td>${escapeHtml(r.setor || '')}</td>
+          <td class="center">${r.total || 0}</td>
+          <td>${escapeHtml(r.status || '')}</td>
+        </tr>`).join('')}</tbody>
+    </table>` : '<div class="empty-state">Nenhum recebimento ainda.</div>';
 }
 
 /* ================= RELATÓRIO DE CAIXAS ================= */
@@ -1643,6 +1893,96 @@ function formatarTrocasTexto(trocas){
   const partes = Object.keys(trocas.porTipo).sort().map(t => `${t}: ${trocas.porTipo[t]}`);
   return trocas.total + ' (' + partes.join(', ') + ')';
 }
+
+/* Lista, um a um, cada recebimento com caixa(s) trocada(s), respeitando os filtros de
+   Cliente/Setor do relatório. É esta lista que dá o detalhe de QUAL recebimento gerou
+   a troca, além do total já mostrado (agregado) na tabela principal. */
+function listarTrocasDetalhado(){
+  if(document.getElementById('rel-fonte').value !== 'recebimento') return [];
+  const clienteFiltro = document.getElementById('rel-filtro-cliente').value;
+  const setorFiltro = document.getElementById('rel-filtro-setor').value;
+  return recebimentos
+    .filter(r => r.caixasTrocadas > 0)
+    .filter(r => !clienteFiltro || r.cliente === clienteFiltro)
+    .filter(r => !setorFiltro || r.setor === setorFiltro)
+    .map(r => ({
+      data: r.data,
+      hora: r.hora || '',
+      cliente: r.cliente || '',
+      setor: r.setor || '',
+      entregador: (r.entregador && r.entregador.nome) || '',
+      recebidoPor: r.recebidoPor || '',
+      status: r.status || '',
+      qtd: r.caixasTrocadas,
+      tipo: r.tipoCaixaTrocada || '(sem tipo)'
+    }))
+    .sort((a, b) => {
+      const da = (a.data || '') + (a.hora || '');
+      const db = (b.data || '') + (b.hora || '');
+      return da < db ? 1 : da > db ? -1 : 0;
+    });
+}
+
+function renderTrocasDetalhado(){
+  const card = document.getElementById('card-trocas-detalhe');
+  const lista = listarTrocasDetalhado();
+  const empty = document.getElementById('trocas-detalhe-empty');
+  const tabela = document.getElementById('tabela-trocas-detalhe');
+  const tbody = document.getElementById('tbody-trocas-detalhe');
+  const tfoot = document.getElementById('tfoot-trocas-detalhe');
+
+  if(document.getElementById('rel-fonte').value !== 'recebimento'){
+    card.style.display = 'none';
+    return;
+  }
+  card.style.display = '';
+
+  if(lista.length === 0){
+    empty.style.display = '';
+    tabela.style.display = 'none';
+    return;
+  }
+  empty.style.display = 'none';
+  tabela.style.display = 'table';
+
+  tbody.innerHTML = lista.map(t => `
+    <tr>
+      <td>${formatarDataBR(t.data)}${t.hora ? ' ' + escapeHtml(t.hora) : ''}</td>
+      <td>${escapeHtml(t.cliente)}</td>
+      <td>${escapeHtml(t.setor)}</td>
+      <td>${t.entregador ? escapeHtml(t.entregador) : '<span class="hint" style="margin:0;">—</span>'}</td>
+      <td>${t.recebidoPor ? escapeHtml(t.recebidoPor) : '<span class="hint" style="margin:0;">—</span>'}</td>
+      <td>${escapeHtml(t.status)}</td>
+      <td class="center"><b>${t.qtd}</b></td>
+      <td>${escapeHtml(t.tipo)}</td>
+    </tr>`).join('');
+
+  const totalQtd = lista.reduce((soma, t) => soma + t.qtd, 0);
+  const porTipo = {};
+  lista.forEach(t => { porTipo[t.tipo] = (porTipo[t.tipo] || 0) + t.qtd; });
+  const resumoTipos = Object.keys(porTipo).sort().map(t => `${t}: ${porTipo[t]}`).join(', ');
+  tfoot.innerHTML = `
+    <tr style="font-weight:700; background:var(--verde-claro);">
+      <td colspan="6">Total geral (${lista.length} recebimento(s) com troca)</td>
+      <td class="center">${totalQtd}</td>
+      <td>${escapeHtml(resumoTipos)}</td>
+    </tr>`;
+}
+
+function exportarCSVTrocasDetalhado(){
+  const lista = listarTrocasDetalhado();
+  if(lista.length === 0){ alert('Nenhuma caixa trocada registrada para os filtros atuais.'); return; }
+  let csv = 'DATA;HORA;CLIENTE;SETOR;ENTREGUE POR;RECEBIDO POR;STATUS;QTD. TROCADA;TIPO DA CAIXA TROCADA\n';
+  lista.forEach(t => {
+    csv += [t.data || '', t.hora || '', t.cliente || '', t.setor || '', t.entregador || '', t.recebidoPor || '', t.status || '', t.qtd, t.tipo].join(';') + '\n';
+  });
+  const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `caixas_trocadas_detalhado_${hoje()}.csv`; a.click();
+  URL.revokeObjectURL(url);
+}
+
 function agruparRelatorio(tipoPeriodo, detalhar){
   const clienteFiltro = document.getElementById('rel-filtro-cliente').value;
   const setorFiltro = document.getElementById('rel-filtro-setor').value;
@@ -1693,6 +2033,8 @@ function renderRelatorio(){
   const linhasAgrupadas = agruparRelatorio(tipoPeriodo, detalhar);
   const mostrarTrocas = document.getElementById('rel-fonte').value === 'recebimento';
 
+  renderTrocasDetalhado();
+
   if(linhasAgrupadas.length === 0){
     tabela.style.display = 'none';
     vazio.style.display = 'block';
@@ -1708,7 +2050,7 @@ function renderRelatorio(){
     <th>${labelPeriodo}</th>
     ${detalhar !== 'nenhum' ? `<th>${detalhar === 'cliente' ? 'Cliente' : 'Setor'}</th>` : ''}
     ${colunasTipo.map(t => `<th class="center">${escapeHtml(t)}</th>`).join('')}
-    ${mostrarTrocas ? '<th class="center">Avarias registradas (qtd / tipo)</th>' : ''}
+    ${mostrarTrocas ? '<th class="center">Caixas trocadas (qtd / tipo)</th>' : ''}
     <th class="center">Total ${escapeHtml(labelFonte)}</th>
   `;
 
@@ -1788,6 +2130,42 @@ function imprimirRelatorio(){
       <td class="col-num">${totalGeral}</td>
     </tr>`;
 
+  const trocasDetalhadas = listarTrocasDetalhado();
+  const blocoTrocasHtml = (mostrarTrocas && trocasDetalhadas.length > 0) ? (() => {
+    const linhas = trocasDetalhadas.map(t => `
+      <tr>
+        <td>${formatarDataBR(t.data)}${t.hora ? ' ' + escapeHtml(t.hora) : ''}</td>
+        <td>${escapeHtml(t.cliente)}</td>
+        <td>${escapeHtml(t.setor)}</td>
+        <td>${t.entregador ? escapeHtml(t.entregador) : '—'}</td>
+        <td>${t.recebidoPor ? escapeHtml(t.recebidoPor) : '—'}</td>
+        <td>${escapeHtml(t.status)}</td>
+        <td class="col-num"><b>${t.qtd}</b></td>
+        <td>${escapeHtml(t.tipo)}</td>
+      </tr>`).join('');
+    const totalQtd = trocasDetalhadas.reduce((s, t) => s + t.qtd, 0);
+    const porTipo = {};
+    trocasDetalhadas.forEach(t => { porTipo[t.tipo] = (porTipo[t.tipo] || 0) + t.qtd; });
+    const resumoTipos = Object.keys(porTipo).sort().map(t => `${t}: ${porTipo[t]}`).join(', ');
+    return `
+  <div class="sheet-title" style="font-size:14px; margin-top:24px;">Detalhamento das caixas trocadas</div>
+  <table class="rel-table">
+    <thead>
+      <tr>
+        <th>Data</th><th>Cliente</th><th>Setor</th><th>Entregue por</th><th>Recebido por</th><th>Status</th><th>Qtd. trocada</th><th>Tipo da caixa trocada</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${linhas}
+      <tr class="linha-total">
+        <td colspan="6">Total geral (${trocasDetalhadas.length} recebimento(s) com troca)</td>
+        <td class="col-num">${totalQtd}</td>
+        <td>${escapeHtml(resumoTipos)}</td>
+      </tr>
+    </tbody>
+  </table>`;
+  })() : '';
+
   const agora = new Date();
   const emissaoTxt = agora.toLocaleDateString('pt-BR') + ' ' + agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
@@ -1838,12 +2216,13 @@ function imprimirRelatorio(){
         <th>${escapeHtml(labelPeriodo)}</th>
         ${detalhar !== 'nenhum' ? `<th>${detalhar === 'cliente' ? 'Cliente' : 'Setor'}</th>` : ''}
         ${colunasTipo.map(t => `<th>${escapeHtml(t)}</th>`).join('')}
-        ${mostrarTrocas ? '<th>Avarias registradas (qtd / tipo)</th>' : ''}
+        ${mostrarTrocas ? '<th>Caixas trocadas (qtd / tipo)</th>' : ''}
         <th>Total ${escapeHtml(labelFonte)}</th>
       </tr>
     </thead>
     <tbody>${linhasHtml}${linhaTotal}</tbody>
   </table>
+  ${blocoTrocasHtml}
   <div class="sheet-footer">Rodovia BR-101 Sul 00, KM 96,4 - n 5.225, Galpão 7, Módulo 11, Distrito Industrial Diper. Cabo de Santo Agostinho/PE - CEP: 54503-900<br>CNPJ: 10.921.252/0002-98 | Fone: (81) 3184.5250 | doc@cepe.com.br</div>
   <script>window.onload = function(){ window.print(); };<\/script>
 </body>
@@ -1868,7 +2247,7 @@ function exportarRelatorioCSV(){
   const colunasTipo = tiposColunasRelatorio(linhasAgrupadas);
   let csv = 'PERIODO;' + (detalhar !== 'nenhum' ? (detalhar.toUpperCase() + ';') : '') +
     colunasTipo.map(t => t.toUpperCase().replace(/;/g, ',')).join(';') +
-    (mostrarTrocas ? ';AVARIAS REGISTRADAS (QTD);TIPO(S) DA(S) AVARIA(S)' : '') + ';TOTAL\n';
+    (mostrarTrocas ? ';CAIXAS TROCADAS (QTD);TIPO(S) DA(S) CAIXA(S) TROCADA(S)' : '') + ';TOTAL\n';
   linhasAgrupadas.forEach(g => {
     const trocasQtd = mostrarTrocas ? g.trocas.total : 0;
     const trocasTipos = mostrarTrocas ? Object.keys(g.trocas.porTipo).sort().map(t => `${t}: ${g.trocas.porTipo[t]}`).join(', ') : '';
@@ -1877,6 +2256,16 @@ function exportarRelatorioCSV(){
       (mostrarTrocas ? `;${trocasQtd};${trocasTipos.replace(/;/g, ',')}` : '') +
       `;${g.totalComTrocas !== undefined ? g.totalComTrocas : g.total}\n`;
   });
+
+  const trocasDetalhadas = listarTrocasDetalhado();
+  if(mostrarTrocas && trocasDetalhadas.length > 0){
+    csv += '\nDETALHAMENTO DAS CAIXAS TROCADAS (um recebimento por linha)\n';
+    csv += 'DATA;HORA;CLIENTE;SETOR;ENTREGUE POR;RECEBIDO POR;STATUS;QTD. TROCADA;TIPO DA CAIXA TROCADA\n';
+    trocasDetalhadas.forEach(t => {
+      csv += [t.data || '', t.hora || '', t.cliente || '', t.setor || '', t.entregador || '', t.recebidoPor || '', t.status || '', t.qtd, t.tipo].join(';') + '\n';
+    });
+  }
+
   const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
