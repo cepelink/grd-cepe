@@ -456,7 +456,17 @@
               <input type="text" id="f-sigla-interno-receb-fim" placeholder="Ex: 8" autocomplete="off">
             </div>
           </div>
-          <div class="hint" style="margin-top:4px;">Deixe os dois em branco para gerar só o próximo número da sequência. Preencha os dois para gerar vários de uma vez (ex: de 1 a 8 gera PMPE000001 até PMPE000008).</div>
+          <div class="grid grid-2" style="margin-top:8px;">
+            <div class="field">
+              <label for="f-sigla-interno-receb-refcli-inicio">Nº caixa do cliente inicial (opcional)</label>
+              <input type="text" id="f-sigla-interno-receb-refcli-inicio" placeholder="Ex: 900 ou diversos 1" autocomplete="off">
+            </div>
+            <div class="field">
+              <label for="f-sigla-interno-receb-refcli-fim">Nº caixa do cliente final (opcional)</label>
+              <input type="text" id="f-sigla-interno-receb-refcli-fim" placeholder="Ex: 903 ou diversos 8" autocomplete="off">
+            </div>
+          </div>
+          <div class="hint" style="margin-top:4px;">Deixe os dois em branco para gerar só o próximo número da sequência. Preencha nº inicial/final para gerar vários de uma vez (ex: de 1 a 8 gera PMPE000001 até PMPE000008). Se também preencher a faixa de nº da caixa do cliente, cada objeto interno gerado é vinculado, na ordem, a um nº — precisa ter a mesma quantidade de itens do intervalo.</div>
           <button type="button" class="btn secondary block" style="margin-top:8px;" onclick="gerarObjetoInternoRecebimento()">Gerar e adicionar objeto interno</button>
         </div>
       </div>
@@ -659,7 +669,17 @@
               <input type="text" id="f-sigla-interno-fim" placeholder="Ex: 8" autocomplete="off">
             </div>
           </div>
-          <div class="hint" style="margin-top:4px;">Deixe os dois em branco para gerar só o próximo número da sequência. Preencha os dois para gerar vários de uma vez (ex: de 1 a 8 gera PMPE000001 até PMPE000008).</div>
+          <div class="grid grid-2" style="margin-top:8px;">
+            <div class="field">
+              <label for="f-sigla-interno-refcli-inicio">Nº caixa do cliente inicial (opcional)</label>
+              <input type="text" id="f-sigla-interno-refcli-inicio" placeholder="Ex: 900 ou diversos 1" autocomplete="off">
+            </div>
+            <div class="field">
+              <label for="f-sigla-interno-refcli-fim">Nº caixa do cliente final (opcional)</label>
+              <input type="text" id="f-sigla-interno-refcli-fim" placeholder="Ex: 903 ou diversos 8" autocomplete="off">
+            </div>
+          </div>
+          <div class="hint" style="margin-top:4px;">Deixe os dois em branco para gerar só o próximo número da sequência. Preencha nº inicial/final para gerar vários de uma vez (ex: de 1 a 8 gera PMPE000001 até PMPE000008). Se também preencher a faixa de nº da caixa do cliente, cada objeto interno gerado é vinculado, na ordem, a um nº — precisa ter a mesma quantidade de itens do intervalo.</div>
           <button type="button" class="btn secondary block" style="margin-top:8px;" onclick="gerarObjetoInterno()">Gerar e adicionar objeto interno</button>
         </div>
       </div>
@@ -1230,15 +1250,57 @@ async function gerarObjetoInterno(){
     mostrarStatus('Intervalo muito grande (máximo de 500 objetos internos por vez).', 'error');
     return;
   }
+
+  const refIniInput = document.getElementById('f-sigla-interno-refcli-inicio');
+  const refFimInput = document.getElementById('f-sigla-interno-refcli-fim');
+  const refIniRaw = refIniInput ? refIniInput.value.trim() : '';
+  const refFimRaw = refFimInput ? refFimInput.value.trim() : '';
+  let usarRefCliente = false;
+  let refNumIni = 0, refLargura = 0, refCrescente = true, refPrefixo = '', refSufixo = '';
+  if(refIniRaw || refFimRaw){
+    if(!refIniRaw || !refFimRaw){
+      mostrarStatus('Informe o nº da caixa do cliente inicial e final, ou deixe os dois em branco.', 'warn');
+      return;
+    }
+    const refIni = parseRefClienteFaixa(refIniRaw);
+    const refFim = parseRefClienteFaixa(refFimRaw);
+    if(!refIni || !refFim){
+      mostrarStatus('Não consegui ler os números da caixa do cliente.', 'error');
+      return;
+    }
+    if(refIni.prefixo !== refFim.prefixo || refIni.sufixo !== refFim.sufixo){
+      mostrarStatus('O texto antes/depois do número precisa ser igual no inicial e no final (ex: "diversos 1" e "diversos 8").', 'error');
+      return;
+    }
+    const totalRef = Math.abs(refFim.numero - refIni.numero) + 1;
+    if(totalRef !== total){
+      mostrarStatus('A faixa de nº da caixa do cliente tem ' + totalRef + ' item(ns), mas o intervalo de objetos internos tem ' + total + '. As duas quantidades precisam ser iguais para vincular.', 'error');
+      return;
+    }
+    refNumIni = refIni.numero;
+    const refComZero = refIni.numeroTxt.startsWith('0') || refFim.numeroTxt.startsWith('0');
+    refLargura = refComZero ? Math.max(refIni.largura, refFim.largura) : 0;
+    refCrescente = refFim.numero >= refIni.numero;
+    refPrefixo = refIni.prefixo;
+    refSufixo = refIni.sufixo;
+    usarRefCliente = true;
+  }
+
   await carregarContadoresObjetoInterno();
   if(!grdAtualId) grdAtualId = gerarId();
   await adicionarSetorCadastro(cliente, setor);
   let adicionados = 0, duplicados = 0;
   let maior = contadoresObjetoInterno[sigla] || 0;
   for(let n = numIni; n <= numFim; n++){
+    const passo = n - numIni;
     const codigo = sigla + String(n).padStart(6, '0');
     if(itens.some(it => it.objeto === codigo)){ duplicados++; continue; }
-    itens.push({ cliente, setor, objeto: codigo, caixa: caixaTipoAtual, caixaId: codigo, refCliente: '' });
+    let refCliente = '';
+    if(usarRefCliente){
+      const refNum = refCrescente ? (refNumIni + passo) : (refNumIni - passo);
+      refCliente = refPrefixo + String(refNum).padStart(refLargura, '0') + refSufixo;
+    }
+    itens.push({ cliente, setor, objeto: codigo, caixa: caixaTipoAtual, caixaId: codigo, refCliente });
     adicionados++;
     if(n > maior) maior = n;
   }
@@ -1247,9 +1309,11 @@ async function gerarObjetoInterno(){
   siglaInput.value = '';
   inicioInput.value = '';
   fimInput.value = '';
+  if(refIniInput) refIniInput.value = '';
+  if(refFimInput) refFimInput.value = '';
   renderTabela();
   await salvarSessao();
-  let msg = adicionados + ' objeto(s) interno(s) adicionado(s) — ' + sigla + String(numIni).padStart(6,'0') + ' a ' + sigla + String(numFim).padStart(6,'0') + ' (' + caixaTipoAtual + ').';
+  let msg = adicionados + ' objeto(s) interno(s) adicionado(s) — ' + sigla + String(numIni).padStart(6,'0') + ' a ' + sigla + String(numFim).padStart(6,'0') + ' (' + caixaTipoAtual + ')' + (usarRefCliente ? ', vinculados ao nº da caixa do cliente' : '') + '.';
   if(duplicados > 0) msg += ' ' + duplicados + ' já estavam na lista e foram ignorados.';
   mostrarStatus(msg, duplicados > 0 ? 'warn' : 'ok');
 }
@@ -1309,13 +1373,55 @@ async function gerarObjetoInternoRecebimento(){
     mostrarStatus('Intervalo muito grande (máximo de 500 objetos internos por vez).', 'error', 'receb-status');
     return;
   }
+
+  const refIniInput = document.getElementById('f-sigla-interno-receb-refcli-inicio');
+  const refFimInput = document.getElementById('f-sigla-interno-receb-refcli-fim');
+  const refIniRaw = refIniInput ? refIniInput.value.trim() : '';
+  const refFimRaw = refFimInput ? refFimInput.value.trim() : '';
+  let usarRefCliente = false;
+  let refNumIni = 0, refLargura = 0, refCrescente = true, refPrefixo = '', refSufixo = '';
+  if(refIniRaw || refFimRaw){
+    if(!refIniRaw || !refFimRaw){
+      mostrarStatus('Informe o nº da caixa do cliente inicial e final, ou deixe os dois em branco.', 'warn', 'receb-status');
+      return;
+    }
+    const refIni = parseRefClienteFaixa(refIniRaw);
+    const refFim = parseRefClienteFaixa(refFimRaw);
+    if(!refIni || !refFim){
+      mostrarStatus('Não consegui ler os números da caixa do cliente.', 'error', 'receb-status');
+      return;
+    }
+    if(refIni.prefixo !== refFim.prefixo || refIni.sufixo !== refFim.sufixo){
+      mostrarStatus('O texto antes/depois do número precisa ser igual no inicial e no final (ex: "diversos 1" e "diversos 8").', 'error', 'receb-status');
+      return;
+    }
+    const totalRef = Math.abs(refFim.numero - refIni.numero) + 1;
+    if(totalRef !== total){
+      mostrarStatus('A faixa de nº da caixa do cliente tem ' + totalRef + ' item(ns), mas o intervalo de objetos internos tem ' + total + '. As duas quantidades precisam ser iguais para vincular.', 'error', 'receb-status');
+      return;
+    }
+    refNumIni = refIni.numero;
+    const refComZero = refIni.numeroTxt.startsWith('0') || refFim.numeroTxt.startsWith('0');
+    refLargura = refComZero ? Math.max(refIni.largura, refFim.largura) : 0;
+    refCrescente = refFim.numero >= refIni.numero;
+    refPrefixo = refIni.prefixo;
+    refSufixo = refIni.sufixo;
+    usarRefCliente = true;
+  }
+
   await carregarContadoresObjetoInterno();
   let adicionados = 0, duplicados = 0;
   let maior = contadoresObjetoInterno[sigla] || 0;
   for(let n = numIni; n <= numFim; n++){
+    const passo = n - numIni;
     const codigo = sigla + String(n).padStart(6, '0');
     if(itensRecebimentoAtual.some(it => it.objeto === codigo)){ duplicados++; continue; }
-    itensRecebimentoAtual.push({ objeto: codigo, tipo: recebCaixaTipoAtual, caixaId: codigo, refCliente: '' });
+    let refCliente = '';
+    if(usarRefCliente){
+      const refNum = refCrescente ? (refNumIni + passo) : (refNumIni - passo);
+      refCliente = refPrefixo + String(refNum).padStart(refLargura, '0') + refSufixo;
+    }
+    itensRecebimentoAtual.push({ objeto: codigo, tipo: recebCaixaTipoAtual, caixaId: codigo, refCliente });
     adicionados++;
     if(n > maior) maior = n;
   }
@@ -1324,8 +1430,10 @@ async function gerarObjetoInternoRecebimento(){
   siglaInput.value = '';
   inicioInput.value = '';
   fimInput.value = '';
+  if(refIniInput) refIniInput.value = '';
+  if(refFimInput) refFimInput.value = '';
   renderTabelaRecebimentoItens();
-  let msg = adicionados + ' objeto(s) interno(s) adicionado(s) — ' + sigla + String(numIni).padStart(6,'0') + ' a ' + sigla + String(numFim).padStart(6,'0') + ' (' + recebCaixaTipoAtual + ').';
+  let msg = adicionados + ' objeto(s) interno(s) adicionado(s) — ' + sigla + String(numIni).padStart(6,'0') + ' a ' + sigla + String(numFim).padStart(6,'0') + ' (' + recebCaixaTipoAtual + ')' + (usarRefCliente ? ', vinculados ao nº da caixa do cliente' : '') + '.';
   if(duplicados > 0) msg += ' ' + duplicados + ' já estavam na lista e foram ignorados.';
   mostrarStatus(msg, duplicados > 0 ? 'warn' : 'ok', 'receb-status');
 }
