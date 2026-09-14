@@ -446,7 +446,17 @@
         <div id="bloco-objeto-interno-receb" style="display:none; margin-top:10px; padding-top:10px; border-top:1px dashed var(--cinza-borda);">
           <label for="f-sigla-interno-receb">Sigla do cliente</label>
           <input type="text" id="f-sigla-interno-receb" placeholder="Ex: PMPE" autocomplete="off" style="text-transform:uppercase;">
-          <div class="hint" style="margin-top:4px;">Gera um código interno (sigla + número sequencial, ex: PMPE000001) para usar quando não há código de barra físico para bipar. A numeração é sequencial por sigla.</div>
+          <div class="grid grid-2" style="margin-top:8px;">
+            <div class="field">
+              <label for="f-sigla-interno-receb-inicio">Nº inicial (opcional — p/ gerar vários)</label>
+              <input type="text" id="f-sigla-interno-receb-inicio" placeholder="Ex: 1" autocomplete="off">
+            </div>
+            <div class="field">
+              <label for="f-sigla-interno-receb-fim">Nº final (opcional — p/ gerar vários)</label>
+              <input type="text" id="f-sigla-interno-receb-fim" placeholder="Ex: 8" autocomplete="off">
+            </div>
+          </div>
+          <div class="hint" style="margin-top:4px;">Deixe os dois em branco para gerar só o próximo número da sequência. Preencha os dois para gerar vários de uma vez (ex: de 1 a 8 gera PMPE000001 até PMPE000008).</div>
           <button type="button" class="btn secondary block" style="margin-top:8px;" onclick="gerarObjetoInternoRecebimento()">Gerar e adicionar objeto interno</button>
         </div>
       </div>
@@ -639,7 +649,17 @@
         <div id="bloco-objeto-interno" style="display:none; margin-top:10px; padding-top:10px; border-top:1px dashed var(--cinza-borda);">
           <label for="f-sigla-interno">Sigla do cliente</label>
           <input type="text" id="f-sigla-interno" placeholder="Ex: PMPE" autocomplete="off" style="text-transform:uppercase;">
-          <div class="hint" style="margin-top:4px;">Gera um código interno (sigla + número sequencial, ex: PMPE000001) para usar quando não há código de barra físico para bipar. A numeração é sequencial por sigla.</div>
+          <div class="grid grid-2" style="margin-top:8px;">
+            <div class="field">
+              <label for="f-sigla-interno-inicio">Nº inicial (opcional — p/ gerar vários)</label>
+              <input type="text" id="f-sigla-interno-inicio" placeholder="Ex: 1" autocomplete="off">
+            </div>
+            <div class="field">
+              <label for="f-sigla-interno-fim">Nº final (opcional — p/ gerar vários)</label>
+              <input type="text" id="f-sigla-interno-fim" placeholder="Ex: 8" autocomplete="off">
+            </div>
+          </div>
+          <div class="hint" style="margin-top:4px;">Deixe os dois em branco para gerar só o próximo número da sequência. Preencha os dois para gerar vários de uma vez (ex: de 1 a 8 gera PMPE000001 até PMPE000008).</div>
           <button type="button" class="btn secondary block" style="margin-top:8px;" onclick="gerarObjetoInterno()">Gerar e adicionar objeto interno</button>
         </div>
       </div>
@@ -1155,26 +1175,83 @@ function toggleObjetoInterno(){
 }
 async function gerarObjetoInterno(){
   const siglaInput = document.getElementById('f-sigla-interno');
+  const inicioInput = document.getElementById('f-sigla-interno-inicio');
+  const fimInput = document.getElementById('f-sigla-interno-fim');
   const sigla = siglaInput.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
   if(!sigla){
     mostrarStatus('Digite a sigla do cliente antes de gerar o objeto interno.', 'warn');
     siglaInput.focus();
     return;
   }
+  const bruteIni = inicioInput ? inicioInput.value.trim() : '';
+  const bruteFim = fimInput ? fimInput.value.trim() : '';
+
+  if(!bruteIni && !bruteFim){
+    // sem intervalo informado: gera só o próximo número da sequência dessa sigla
+    await carregarContadoresObjetoInterno();
+    let proximo = (contadoresObjetoInterno[sigla] || 0) + 1;
+    let codigo = sigla + String(proximo).padStart(6, '0');
+    while(itens.some(it => it.objeto === codigo)){
+      proximo++;
+      codigo = sigla + String(proximo).padStart(6, '0');
+    }
+    const ok = await adicionarItem(codigo);
+    if(ok !== false){
+      contadoresObjetoInterno[sigla] = proximo;
+      await salvarContadoresObjetoInterno();
+      siglaInput.value = '';
+    }
+    return;
+  }
+
+  // intervalo informado: gera vários objetos internos de uma vez (nº inicial ao nº final)
+  const cliente = document.getElementById('f-cliente').value.trim();
+  const setor = document.getElementById('f-setor').value.trim();
+  if(!cliente){
+    mostrarStatus('Selecione o cliente antes de gerar objetos internos.', 'warn');
+    return;
+  }
+  if(!setor){
+    mostrarStatus('Preencha o setor / delegacia antes de gerar objetos internos.', 'warn');
+    return;
+  }
+  if(!bruteIni || !bruteFim){
+    mostrarStatus('Informe o nº inicial e o nº final, ou deixe os dois em branco para gerar só o próximo da sequência.', 'warn');
+    return;
+  }
+  const numIni = parseInt(bruteIni, 10);
+  const numFim = parseInt(bruteFim, 10);
+  if(isNaN(numIni) || isNaN(numFim) || numFim < numIni){
+    mostrarStatus('Intervalo inválido — o nº final deve ser maior ou igual ao inicial.', 'error');
+    return;
+  }
+  const total = numFim - numIni + 1;
+  if(total > 500){
+    mostrarStatus('Intervalo muito grande (máximo de 500 objetos internos por vez).', 'error');
+    return;
+  }
   await carregarContadoresObjetoInterno();
-  let proximo = (contadoresObjetoInterno[sigla] || 0) + 1;
-  let codigo = sigla + String(proximo).padStart(6, '0');
-  // segurança extra: se por algum motivo o código já existir nos itens desta GRD, avança até achar um livre
-  while(itens.some(it => it.objeto === codigo)){
-    proximo++;
-    codigo = sigla + String(proximo).padStart(6, '0');
+  if(!grdAtualId) grdAtualId = gerarId();
+  await adicionarSetorCadastro(cliente, setor);
+  let adicionados = 0, duplicados = 0;
+  let maior = contadoresObjetoInterno[sigla] || 0;
+  for(let n = numIni; n <= numFim; n++){
+    const codigo = sigla + String(n).padStart(6, '0');
+    if(itens.some(it => it.objeto === codigo)){ duplicados++; continue; }
+    itens.push({ cliente, setor, objeto: codigo, caixa: caixaTipoAtual, caixaId: codigo, refCliente: '' });
+    adicionados++;
+    if(n > maior) maior = n;
   }
-  const ok = await adicionarItem(codigo);
-  if(ok !== false){
-    contadoresObjetoInterno[sigla] = proximo;
-    await salvarContadoresObjetoInterno();
-    siglaInput.value = '';
-  }
+  contadoresObjetoInterno[sigla] = maior;
+  await salvarContadoresObjetoInterno();
+  siglaInput.value = '';
+  inicioInput.value = '';
+  fimInput.value = '';
+  renderTabela();
+  await salvarSessao();
+  let msg = adicionados + ' objeto(s) interno(s) adicionado(s) — ' + sigla + String(numIni).padStart(6,'0') + ' a ' + sigla + String(numFim).padStart(6,'0') + ' (' + caixaTipoAtual + ').';
+  if(duplicados > 0) msg += ' ' + duplicados + ' já estavam na lista e foram ignorados.';
+  mostrarStatus(msg, duplicados > 0 ? 'warn' : 'ok');
 }
 function toggleObjetoInternoRecebimento(){
   const bloco = document.getElementById('bloco-objeto-interno-receb');
@@ -1183,26 +1260,74 @@ function toggleObjetoInternoRecebimento(){
 }
 async function gerarObjetoInternoRecebimento(){
   const siglaInput = document.getElementById('f-sigla-interno-receb');
+  const inicioInput = document.getElementById('f-sigla-interno-receb-inicio');
+  const fimInput = document.getElementById('f-sigla-interno-receb-fim');
   const sigla = siglaInput.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
   if(!sigla){
     mostrarStatus('Digite a sigla do cliente antes de gerar o objeto interno.', 'warn', 'receb-status');
     siglaInput.focus();
     return;
   }
+  const bruteIni = inicioInput ? inicioInput.value.trim() : '';
+  const bruteFim = fimInput ? fimInput.value.trim() : '';
+
+  if(!bruteIni && !bruteFim){
+    // sem intervalo informado: gera só o próximo número da sequência dessa sigla
+    await carregarContadoresObjetoInterno();
+    let proximo = (contadoresObjetoInterno[sigla] || 0) + 1;
+    let codigo = sigla + String(proximo).padStart(6, '0');
+    while(itensRecebimentoAtual.some(it => it.objeto === codigo)){
+      proximo++;
+      codigo = sigla + String(proximo).padStart(6, '0');
+    }
+    const ok = adicionarObjetoRecebimento(codigo);
+    if(ok !== false){
+      contadoresObjetoInterno[sigla] = proximo;
+      await salvarContadoresObjetoInterno();
+      siglaInput.value = '';
+    }
+    return;
+  }
+
+  // intervalo informado: gera vários objetos internos de uma vez (nº inicial ao nº final)
+  if(!recebCaixaTipoAtual){
+    mostrarStatus('Cadastre um tipo de caixa antes de gerar objetos internos.', 'warn', 'receb-status');
+    return;
+  }
+  if(!bruteIni || !bruteFim){
+    mostrarStatus('Informe o nº inicial e o nº final, ou deixe os dois em branco para gerar só o próximo da sequência.', 'warn', 'receb-status');
+    return;
+  }
+  const numIni = parseInt(bruteIni, 10);
+  const numFim = parseInt(bruteFim, 10);
+  if(isNaN(numIni) || isNaN(numFim) || numFim < numIni){
+    mostrarStatus('Intervalo inválido — o nº final deve ser maior ou igual ao inicial.', 'error', 'receb-status');
+    return;
+  }
+  const total = numFim - numIni + 1;
+  if(total > 500){
+    mostrarStatus('Intervalo muito grande (máximo de 500 objetos internos por vez).', 'error', 'receb-status');
+    return;
+  }
   await carregarContadoresObjetoInterno();
-  let proximo = (contadoresObjetoInterno[sigla] || 0) + 1;
-  let codigo = sigla + String(proximo).padStart(6, '0');
-  // segurança extra: se por algum motivo o código já existir nos itens deste recebimento, avança até achar um livre
-  while(itensRecebimentoAtual.some(it => it.objeto === codigo)){
-    proximo++;
-    codigo = sigla + String(proximo).padStart(6, '0');
+  let adicionados = 0, duplicados = 0;
+  let maior = contadoresObjetoInterno[sigla] || 0;
+  for(let n = numIni; n <= numFim; n++){
+    const codigo = sigla + String(n).padStart(6, '0');
+    if(itensRecebimentoAtual.some(it => it.objeto === codigo)){ duplicados++; continue; }
+    itensRecebimentoAtual.push({ objeto: codigo, tipo: recebCaixaTipoAtual, caixaId: codigo, refCliente: '' });
+    adicionados++;
+    if(n > maior) maior = n;
   }
-  const ok = adicionarObjetoRecebimento(codigo);
-  if(ok !== false){
-    contadoresObjetoInterno[sigla] = proximo;
-    await salvarContadoresObjetoInterno();
-    siglaInput.value = '';
-  }
+  contadoresObjetoInterno[sigla] = maior;
+  await salvarContadoresObjetoInterno();
+  siglaInput.value = '';
+  inicioInput.value = '';
+  fimInput.value = '';
+  renderTabelaRecebimentoItens();
+  let msg = adicionados + ' objeto(s) interno(s) adicionado(s) — ' + sigla + String(numIni).padStart(6,'0') + ' a ' + sigla + String(numFim).padStart(6,'0') + ' (' + recebCaixaTipoAtual + ').';
+  if(duplicados > 0) msg += ' ' + duplicados + ' já estavam na lista e foram ignorados.';
+  mostrarStatus(msg, duplicados > 0 ? 'warn' : 'ok', 'receb-status');
 }
 
 function renderClienteSelect(){
