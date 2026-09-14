@@ -442,6 +442,13 @@
         <input type="text" id="f-receb-objeto" class="barcode-input" placeholder="Bipe aqui" autocomplete="off">
         <div class="preview-objeto" id="preview-objeto-receb"></div>
         <button type="button" class="btn secondary" style="margin-top:8px;" onclick="abrirLeitorCamera('receb')">📷 Usar câmera do celular</button>
+        <button type="button" class="link-btn" style="margin-top:8px; display:block;" onclick="toggleObjetoInternoRecebimento()">Não tem código de barra? Gerar objeto interno</button>
+        <div id="bloco-objeto-interno-receb" style="display:none; margin-top:10px; padding-top:10px; border-top:1px dashed var(--cinza-borda);">
+          <label for="f-sigla-interno-receb">Sigla do cliente</label>
+          <input type="text" id="f-sigla-interno-receb" placeholder="Ex: PMPE" autocomplete="off" style="text-transform:uppercase;">
+          <div class="hint" style="margin-top:4px;">Gera um código interno (sigla + número sequencial, ex: PMPE000001) para usar quando não há código de barra físico para bipar. A numeração é sequencial por sigla.</div>
+          <button type="button" class="btn secondary block" style="margin-top:8px;" onclick="gerarObjetoInternoRecebimento()">Gerar e adicionar objeto interno</button>
+        </div>
       </div>
       <div class="field">
         <label>Tipo de caixa</label>
@@ -628,6 +635,13 @@
         <input type="text" id="f-objeto" class="barcode-input" placeholder="Bipe aqui" autocomplete="off">
         <div class="preview-objeto" id="preview-objeto"></div>
         <button type="button" class="btn secondary" style="margin-top:8px;" onclick="abrirLeitorCamera()">📷 Usar câmera do celular</button>
+        <button type="button" class="link-btn" style="margin-top:8px; display:block;" onclick="toggleObjetoInterno()">Não tem código de barra? Gerar objeto interno</button>
+        <div id="bloco-objeto-interno" style="display:none; margin-top:10px; padding-top:10px; border-top:1px dashed var(--cinza-borda);">
+          <label for="f-sigla-interno">Sigla do cliente</label>
+          <input type="text" id="f-sigla-interno" placeholder="Ex: PMPE" autocomplete="off" style="text-transform:uppercase;">
+          <div class="hint" style="margin-top:4px;">Gera um código interno (sigla + número sequencial, ex: PMPE000001) para usar quando não há código de barra físico para bipar. A numeração é sequencial por sigla.</div>
+          <button type="button" class="btn secondary block" style="margin-top:8px;" onclick="gerarObjetoInterno()">Gerar e adicionar objeto interno</button>
+        </div>
       </div>
       <div class="field">
         <label style="display:flex; justify-content:space-between; align-items:center;">
@@ -969,6 +983,7 @@ let recebCaixaTipoAtual = '';
 let intervaloCaixaTipoAtual = '';
 let dividirCaixaTipoAtual = '';
 let objetosRecebidos = {};
+let contadoresObjetoInterno = {};
 let statusCaixa = ['Recebida', 'Recebida com avaria', 'Pendente de conferência', 'Conferida', 'Não está mais conosco — no CGGD', 'Não está mais conosco — com o cliente'];
 
 /* ================= INIT ================= */
@@ -991,6 +1006,7 @@ async function init(){
     .forEach(id => document.getElementById(id).addEventListener('input', salvarSessao));
 
   await carregarCadastro();
+  await carregarContadoresObjetoInterno();
   await carregarTiposCaixa();
   await carregarInstrucoesCaixas();
   await carregarHistorico();
@@ -1121,6 +1137,73 @@ async function carregarCadastro(){
   await salvarCadastro();
 }
 async function salvarCadastro(){ await storageSet('cadastro', JSON.stringify(cadastro), true); }
+
+/* ---- Objeto interno (sigla + sequencial, sem código de barra) ---- */
+async function carregarContadoresObjetoInterno(){
+  const raw = await storageGet('contadores_objeto_interno', true);
+  if(raw){
+    try{ contadoresObjetoInterno = JSON.parse(raw); }catch(e){ contadoresObjetoInterno = {}; }
+  }
+}
+async function salvarContadoresObjetoInterno(){
+  await storageSet('contadores_objeto_interno', JSON.stringify(contadoresObjetoInterno), true);
+}
+function toggleObjetoInterno(){
+  const bloco = document.getElementById('bloco-objeto-interno');
+  bloco.style.display = (bloco.style.display === 'none') ? '' : 'none';
+  if(bloco.style.display !== 'none') document.getElementById('f-sigla-interno').focus();
+}
+async function gerarObjetoInterno(){
+  const siglaInput = document.getElementById('f-sigla-interno');
+  const sigla = siglaInput.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if(!sigla){
+    mostrarStatus('Digite a sigla do cliente antes de gerar o objeto interno.', 'warn');
+    siglaInput.focus();
+    return;
+  }
+  await carregarContadoresObjetoInterno();
+  let proximo = (contadoresObjetoInterno[sigla] || 0) + 1;
+  let codigo = sigla + String(proximo).padStart(6, '0');
+  // segurança extra: se por algum motivo o código já existir nos itens desta GRD, avança até achar um livre
+  while(itens.some(it => it.objeto === codigo)){
+    proximo++;
+    codigo = sigla + String(proximo).padStart(6, '0');
+  }
+  const ok = await adicionarItem(codigo);
+  if(ok !== false){
+    contadoresObjetoInterno[sigla] = proximo;
+    await salvarContadoresObjetoInterno();
+    siglaInput.value = '';
+  }
+}
+function toggleObjetoInternoRecebimento(){
+  const bloco = document.getElementById('bloco-objeto-interno-receb');
+  bloco.style.display = (bloco.style.display === 'none') ? '' : 'none';
+  if(bloco.style.display !== 'none') document.getElementById('f-sigla-interno-receb').focus();
+}
+async function gerarObjetoInternoRecebimento(){
+  const siglaInput = document.getElementById('f-sigla-interno-receb');
+  const sigla = siglaInput.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if(!sigla){
+    mostrarStatus('Digite a sigla do cliente antes de gerar o objeto interno.', 'warn', 'receb-status');
+    siglaInput.focus();
+    return;
+  }
+  await carregarContadoresObjetoInterno();
+  let proximo = (contadoresObjetoInterno[sigla] || 0) + 1;
+  let codigo = sigla + String(proximo).padStart(6, '0');
+  // segurança extra: se por algum motivo o código já existir nos itens deste recebimento, avança até achar um livre
+  while(itensRecebimentoAtual.some(it => it.objeto === codigo)){
+    proximo++;
+    codigo = sigla + String(proximo).padStart(6, '0');
+  }
+  const ok = adicionarObjetoRecebimento(codigo);
+  if(ok !== false){
+    contadoresObjetoInterno[sigla] = proximo;
+    await salvarContadoresObjetoInterno();
+    siglaInput.value = '';
+  }
+}
 
 function renderClienteSelect(){
   const sel = document.getElementById('f-cliente');
@@ -2284,40 +2367,44 @@ function mostrarStatus(msg, tipo, elId){
   el.__statusTimeout = setTimeout(() => { el.className = 'status-msg'; }, 3000);
 }
 
-async function adicionarItem(){
+async function adicionarItem(objetoInterno){
   const cliente = document.getElementById('f-cliente').value.trim();
   const setor = document.getElementById('f-setor').value.trim();
   const objetoInput = document.getElementById('f-objeto');
-  const bruto = objetoInput.value.trim();
+  const usandoObjetoInterno = typeof objetoInterno === 'string' && objetoInterno;
+  const bruto = usandoObjetoInterno ? objetoInterno : objetoInput.value.trim();
 
   if(!cliente){
     mostrarStatus('Selecione o cliente antes de bipar (ou cadastre um novo).', 'warn');
     document.getElementById('f-cliente').focus();
-    return;
+    return false;
   }
   if(!setor){
     mostrarStatus('Preencha o setor / delegacia antes de bipar.', 'warn');
     document.getElementById('f-setor').focus();
-    return;
+    return false;
   }
   if(!bruto){
     mostrarStatus('Bipe ou digite o número do objeto.', 'warn');
-    return;
+    return false;
   }
-  const objeto = extrairObjeto(bruto);
+  // objeto interno (sigla + sequencial) já vem pronto — não passa pela extração de dígitos do código de barra
+  const objeto = usandoObjetoInterno ? bruto : extrairObjeto(bruto);
   if(!objeto){
     mostrarStatus('Não consegui ler o código — confira o objeto.', 'error');
     objetoInput.value = '';
     document.getElementById('preview-objeto').textContent = '';
     objetoInput.focus();
-    return;
+    return false;
   }
   if(itens.some(it => it.objeto === objeto)){
     mostrarStatus('Objeto ' + objeto + ' em duplicidade — já foi bipado nesta GRD.', 'error');
-    objetoInput.value = '';
-    document.getElementById('preview-objeto').textContent = '';
-    objetoInput.focus();
-    return;
+    if(!usandoObjetoInterno){
+      objetoInput.value = '';
+      document.getElementById('preview-objeto').textContent = '';
+      objetoInput.focus();
+    }
+    return false;
   }
 
   await adicionarSetorCadastro(cliente, setor);
@@ -2341,12 +2428,17 @@ async function adicionarItem(){
     onMesmaCaixaGrdChange();
   }
 
-  objetoInput.value = '';
-  document.getElementById('preview-objeto').textContent = '';
-  objetoInput.focus();
-  mostrarStatus('Item ' + itens.length + ' adicionado: ' + objeto + ' (' + caixaTipoAtual + ')' + msgExtra, 'ok');
+  if(usandoObjetoInterno){
+    mostrarStatus('Item ' + itens.length + ' adicionado (objeto interno): ' + objeto + ' (' + caixaTipoAtual + ')' + msgExtra, 'ok');
+  } else {
+    objetoInput.value = '';
+    document.getElementById('preview-objeto').textContent = '';
+    objetoInput.focus();
+    mostrarStatus('Item ' + itens.length + ' adicionado: ' + objeto + ' (' + caixaTipoAtual + ')' + msgExtra, 'ok');
+  }
   renderTabela();
   await salvarSessao();
+  return true;
 }
 async function removerItem(idx){
   itens.splice(idx, 1);
@@ -2928,31 +3020,34 @@ function atualizarPreviewObjetoRecebimento(){
 function onObjetoRecebimentoKeydown(e){
   if(e.key === 'Enter'){ e.preventDefault(); adicionarObjetoRecebimento(); }
 }
-function adicionarObjetoRecebimento(){
+function adicionarObjetoRecebimento(objetoInterno){
   const objetoInput = document.getElementById('f-receb-objeto');
-  const bruto = objetoInput.value.trim();
+  const usandoObjetoInterno = typeof objetoInterno === 'string' && objetoInterno;
+  const bruto = usandoObjetoInterno ? objetoInterno : objetoInput.value.trim();
   if(!bruto){
     mostrarStatus('Bipe ou digite o número do objeto.', 'warn', 'receb-status');
-    return;
+    return false;
   }
   if(!recebCaixaTipoAtual){
     mostrarStatus('Cadastre um tipo de caixa antes de bipar.', 'warn', 'receb-status');
-    return;
+    return false;
   }
-  const objeto = extrairObjeto(bruto);
+  const objeto = usandoObjetoInterno ? bruto : extrairObjeto(bruto);
   if(!objeto){
     mostrarStatus('Não consegui ler o código — confira o objeto.', 'error', 'receb-status');
     objetoInput.value = '';
     document.getElementById('preview-objeto-receb').textContent = '';
     objetoInput.focus();
-    return;
+    return false;
   }
   if(itensRecebimentoAtual.some(it => it.objeto === objeto)){
     mostrarStatus('Objeto ' + objeto + ' em duplicidade — já foi bipado neste recebimento.', 'error', 'receb-status');
-    objetoInput.value = '';
-    document.getElementById('preview-objeto-receb').textContent = '';
-    objetoInput.focus();
-    return;
+    if(!usandoObjetoInterno){
+      objetoInput.value = '';
+      document.getElementById('preview-objeto-receb').textContent = '';
+      objetoInput.focus();
+    }
+    return false;
   }
 
   const chkMesmaCaixa = document.getElementById('f-receb-mesma-caixa');
@@ -2971,16 +3066,21 @@ function adicionarObjetoRecebimento(){
 
   itensRecebimentoAtual.push({ objeto, tipo, caixaId, refCliente });
 
-  objetoInput.value = '';
-  if(refClienteInput) refClienteInput.value = '';
-  document.getElementById('preview-objeto-receb').textContent = '';
   if(chkMesmaCaixa && chkMesmaCaixa.checked){
     chkMesmaCaixa.checked = false;
     onMesmaCaixaRecebimentoChange();
   }
-  objetoInput.focus();
-  mostrarStatus('Objeto ' + objeto + ' adicionado (' + tipo + ')' + msgExtra + '.', 'ok', 'receb-status');
+  if(usandoObjetoInterno){
+    mostrarStatus('Objeto ' + objeto + ' adicionado (objeto interno, ' + tipo + ')' + msgExtra + '.', 'ok', 'receb-status');
+  } else {
+    objetoInput.value = '';
+    if(refClienteInput) refClienteInput.value = '';
+    document.getElementById('preview-objeto-receb').textContent = '';
+    objetoInput.focus();
+    mostrarStatus('Objeto ' + objeto + ' adicionado (' + tipo + ')' + msgExtra + '.', 'ok', 'receb-status');
+  }
   renderTabelaRecebimentoItens();
+  return true;
 }
 function removerObjetoRecebimento(idx){
   itensRecebimentoAtual.splice(idx, 1);
