@@ -556,6 +556,7 @@
       <span>
         <button class="link-btn" onclick="renderRecebimentos()">Atualizar</button>
         <button class="link-btn" onclick="exportarCSVRecebimentos()">Exportar tudo (CSV)</button>
+        <button class="link-btn" onclick="limparObjetosRecebidosOrfaos()">🧹 Limpar objetos órfãos</button>
       </span>
     </h2>
     <div id="receb-hist-wrap">
@@ -3758,6 +3759,28 @@ async function carregarObjetosRecebidos(){
 }
 async function salvarObjetosRecebidos(){ await storageSet('objetosRecebidos', JSON.stringify(objetosRecebidos), true); }
 
+/* ---- Limpeza única de objetos órfãos (objetos apagados/excluídos que ficaram presos no mapa usado pela GRD) ---- */
+async function limparObjetosRecebidosOrfaos(){
+  if(!confirm('Isso vai remover do "Puxar caixas já recebidas" todo objeto que não pertence a nenhum recebimento existente hoje. Continuar?')) return;
+
+  await carregarRecebimentos();
+  await carregarObjetosRecebidos();
+
+  const objetosValidos = new Set();
+  recebimentos.forEach(r => (r.objetos || []).forEach(it => { if(it.objeto) objetosValidos.add(it.objeto); }));
+
+  let removidos = 0;
+  Object.keys(objetosRecebidos).forEach(obj => {
+    if(!objetosValidos.has(obj)){
+      delete objetosRecebidos[obj];
+      removidos++;
+    }
+  });
+
+  await salvarObjetosRecebidos();
+  alert(`Limpeza concluída: ${removidos} objeto(s) órfão(s) removido(s).`);
+}
+
 /* ---- Status da caixa (cadastrável) ---- */
 async function carregarStatusCaixa(){
   const raw = await storageGet('statusCaixa', true);
@@ -3947,8 +3970,16 @@ async function registrarRecebimento(){
 async function excluirRecebimento(id){
   if(!confirm('Excluir esse recebimento? Essa ação não pode ser desfeita.')) return;
   await carregarRecebimentos();
+  const recebimentoExcluido = recebimentos.find(r => r.id === id);
   recebimentos = recebimentos.filter(r => r.id !== id);
   await salvarRecebimentos();
+
+  if(recebimentoExcluido){
+    await carregarObjetosRecebidos();
+    (recebimentoExcluido.objetos || []).forEach(it => { delete objetosRecebidos[it.objeto]; });
+    await salvarObjetosRecebidos();
+  }
+
   renderRecebimentos();
 }
 
@@ -4238,6 +4269,10 @@ async function salvarEdicaoRecebimento(){
     mostrarStatus('Esse recebimento não existe mais.', 'error', 'modal-edit-status-msg');
     return;
   }
+  const objetosOriginais = (recebimentos[idx].objetos || []).map(it => it.objeto);
+  const objetosFinaisSet = new Set(itensEdicaoRecebimento.map(it => it.objeto));
+  const objetosRemovidosNaEdicao = objetosOriginais.filter(obj => !objetosFinaisSet.has(obj));
+
   recebimentos[idx] = {
     ...recebimentos[idx],
     data, hora, cliente, setor, status, tipos, total,
@@ -4253,6 +4288,7 @@ async function salvarEdicaoRecebimento(){
   await salvarRecebimentos();
 
   await carregarObjetosRecebidos();
+  objetosRemovidosNaEdicao.forEach(obj => { delete objetosRecebidos[obj]; });
   itensEdicaoRecebimento.forEach(it => {
     objetosRecebidos[it.objeto] = { tipo: it.tipo, cliente, setor, data, hora, status, refCliente: it.refCliente || '', caixaId: it.caixaId || it.objeto };
   });
