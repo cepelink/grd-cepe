@@ -910,6 +910,39 @@
       <h2>Últimos recebimentos</h2>
       <div id="dash-recentes"></div>
     </div>
+
+    <div class="card" style="margin-top:8px;">
+      <h2>Saída — GRDs emitidas</h2>
+    </div>
+
+    <div class="dash-kpis" id="dash-kpis-grd"></div>
+
+    <div class="dash-charts-grid">
+      <div class="card">
+        <h2>Objetos enviados por mês (últimos 6 meses)</h2>
+        <div id="dash-chart-grd-mensal"></div>
+      </div>
+      <div class="card">
+        <h2>Por tipo de caixa — saída (no período)</h2>
+        <div id="dash-chart-grd-tipos"></div>
+      </div>
+    </div>
+
+    <div class="dash-charts-grid">
+      <div class="card">
+        <h2>Top clientes por volume enviado</h2>
+        <div id="dash-top-clientes-grd"></div>
+      </div>
+      <div class="card">
+        <h2>Top setores — saída (no período)</h2>
+        <div id="dash-chart-grd-setores"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Últimas GRDs emitidas</h2>
+      <div id="dash-recentes-grd"></div>
+    </div>
   </div>
 
 </div>
@@ -1943,12 +1976,16 @@ function mostrarAba(aba){
 /* ================= DASHBOARD ================= */
 async function atualizarDashboard(){
   await carregarRecebimentos();
+  await carregarHistorico();
   renderFiltrosDashboard();
   renderDashboard();
 }
 
 function renderFiltrosDashboard(){
-  const clientes = [...new Set(recebimentos.map(r => r.cliente).filter(Boolean))].sort((a,b) => a.localeCompare(b));
+  const clientesReceb = recebimentos.map(r => r.cliente).filter(Boolean);
+  const clientesGrd = [];
+  historico.forEach(g => (g.itens || []).forEach(it => { if(it.cliente) clientesGrd.push(it.cliente); }));
+  const clientes = [...new Set([...clientesReceb, ...clientesGrd])].sort((a,b) => a.localeCompare(b));
   const selCliente = document.getElementById('dash-filtro-cliente');
   const clienteAtual = selCliente.value;
   selCliente.innerHTML = '<option value="">Todos os clientes</option>' +
@@ -1959,8 +1996,13 @@ function renderFiltrosDashboard(){
 
 function renderFiltroSetorDashboardOptions(){
   const clienteFiltro = document.getElementById('dash-filtro-cliente').value;
-  const base = recebimentos.filter(r => !clienteFiltro || r.cliente === clienteFiltro);
-  const setores = [...new Set(base.map(r => r.setor).filter(Boolean))].sort((a,b) => a.localeCompare(b));
+  const baseReceb = recebimentos.filter(r => !clienteFiltro || r.cliente === clienteFiltro);
+  const setoresReceb = baseReceb.map(r => r.setor).filter(Boolean);
+  const setoresGrd = [];
+  historico.forEach(g => (g.itens || []).forEach(it => {
+    if(it.setor && (!clienteFiltro || it.cliente === clienteFiltro)) setoresGrd.push(it.setor);
+  }));
+  const setores = [...new Set([...setoresReceb, ...setoresGrd])].sort((a,b) => a.localeCompare(b));
   const selSetor = document.getElementById('dash-filtro-setor');
   const setorAtual = selSetor.value;
   selSetor.innerHTML = '<option value="">Todos os setores</option>' +
@@ -1997,6 +2039,22 @@ function recebimentosFiltradosDashboard(){
     if(setorFiltro && r.setor !== setorFiltro) return false;
     return true;
   });
+}
+
+function historicoFiltradoDashboard(){
+  const inicio = periodoInicioDashboard();
+  const clienteFiltro = document.getElementById('dash-filtro-cliente').value;
+  const setorFiltro = document.getElementById('dash-filtro-setor').value;
+  return historico
+    .filter(g => !inicio || (g.data && g.data >= inicio))
+    .map(g => ({
+      grd: g,
+      itens: (g.itens || []).filter(it =>
+        (!clienteFiltro || it.cliente === clienteFiltro) &&
+        (!setorFiltro || it.setor === setorFiltro)
+      )
+    }))
+    .filter(x => x.itens.length > 0);
 }
 
 function gerarBarrasHtml(dados){
@@ -2080,6 +2138,72 @@ function renderDashboard(){
           <td>${escapeHtml(r.status || '')}</td>
         </tr>`).join('')}</tbody>
     </table>` : '<div class="empty-state">Nenhum recebimento ainda.</div>';
+
+  /* ===== SAÍDA (GRDs) ===== */
+  const listaGrd = historicoFiltradoDashboard();
+
+  /* KPIs de saída */
+  const totalGrds = listaGrd.length;
+  const totalItensSaida = listaGrd.reduce((s, x) => s + x.itens.length, 0);
+  let totalCaixasSaida = 0;
+  listaGrd.forEach(x => { totalCaixasSaida += new Set(x.itens.map(it => it.caixaId || it.objeto)).size; });
+  const clientesSaida = new Set();
+  listaGrd.forEach(x => x.itens.forEach(it => { if(it.cliente) clientesSaida.add(it.cliente); }));
+
+  document.getElementById('dash-kpis-grd').innerHTML = `
+    <div class="dash-kpi"><div class="dash-kpi-valor">${totalGrds}</div><div class="dash-kpi-label">GRDs emitidas</div></div>
+    <div class="dash-kpi"><div class="dash-kpi-valor">${totalCaixasSaida}</div><div class="dash-kpi-label">Caixas expedidas</div></div>
+    <div class="dash-kpi"><div class="dash-kpi-valor">${totalItensSaida}</div><div class="dash-kpi-label">Objetos enviados</div></div>
+    <div class="dash-kpi"><div class="dash-kpi-valor">${clientesSaida.size}</div><div class="dash-kpi-label">Clientes atendidos (saída)</div></div>
+  `;
+
+  /* Tendência mensal de objetos enviados (últimos 6 meses) — respeita cliente/setor, mas não o período */
+  const mesesDadosGrd = {};
+  chavesMeses.forEach(c => { mesesDadosGrd[c] = { label: mesesDados[c].label, valor: 0 }; });
+  historico.forEach(g => (g.itens || []).forEach(it => {
+    if(clienteFiltro && it.cliente !== clienteFiltro) return;
+    if(setorFiltro && it.setor !== setorFiltro) return;
+    if(!g.data) return;
+    const chave = g.data.slice(0, 4) + g.data.slice(5, 7);
+    if(mesesDadosGrd[chave]) mesesDadosGrd[chave].valor += 1;
+  }));
+  document.getElementById('dash-chart-grd-mensal').innerHTML = gerarBarrasHtml(chavesMeses.map(c => mesesDadosGrd[c]));
+
+  /* Por tipo de caixa — saída (dentro do período/filtros selecionados) */
+  const porTipoGrd = {};
+  listaGrd.forEach(x => x.itens.forEach(it => { const t = it.caixa || '(sem tipo)'; porTipoGrd[t] = (porTipoGrd[t] || 0) + 1; }));
+  const dadosTiposGrd = Object.keys(porTipoGrd).sort((a, b) => porTipoGrd[b] - porTipoGrd[a]).map(t => ({ label: t, valor: porTipoGrd[t] }));
+  document.getElementById('dash-chart-grd-tipos').innerHTML = gerarBarrasHtml(dadosTiposGrd);
+
+  /* Top clientes por volume enviado (dentro do período/filtros selecionados) */
+  const porClienteGrd = {};
+  listaGrd.forEach(x => x.itens.forEach(it => { const c = it.cliente || '(sem cliente)'; porClienteGrd[c] = (porClienteGrd[c] || 0) + 1; }));
+  const topClientesGrd = Object.keys(porClienteGrd).sort((a, b) => porClienteGrd[b] - porClienteGrd[a]).slice(0, 8).map(c => ({ label: c, valor: porClienteGrd[c] }));
+  document.getElementById('dash-top-clientes-grd').innerHTML = gerarBarrasHtml(topClientesGrd);
+
+  /* Top setores — saída (dentro do período/filtros selecionados) */
+  const porSetorGrd = {};
+  listaGrd.forEach(x => x.itens.forEach(it => { const s = it.setor || '(sem setor)'; porSetorGrd[s] = (porSetorGrd[s] || 0) + 1; }));
+  const topSetoresGrd = Object.keys(porSetorGrd).sort((a, b) => porSetorGrd[b] - porSetorGrd[a]).slice(0, 8).map(s => ({ label: s, valor: porSetorGrd[s] }));
+  document.getElementById('dash-chart-grd-setores').innerHTML = gerarBarrasHtml(topSetoresGrd);
+
+  /* Últimas GRDs emitidas (dentro do período/filtros selecionados) */
+  const recentesGrd = listaGrd.slice().sort((a, b) => (b.grd.criadoEm || 0) - (a.grd.criadoEm || 0)).slice(0, 6);
+  document.getElementById('dash-recentes-grd').innerHTML = recentesGrd.length ? `
+    <table class="hist">
+      <thead><tr><th>Data</th><th>Cliente(s)</th><th>Setor(es)</th><th class="center">Itens</th></tr></thead>
+      <tbody>${recentesGrd.map(x => {
+        const clientesUnicos = [...new Set(x.itens.map(i => i.cliente).filter(Boolean))].join(', ');
+        const setoresUnicos = [...new Set(x.itens.map(i => i.setor).filter(Boolean))].join(', ');
+        return `
+        <tr>
+          <td>${formatarDataBR(x.grd.data)}</td>
+          <td>${escapeHtml(clientesUnicos)}</td>
+          <td>${escapeHtml(setoresUnicos)}</td>
+          <td class="center">${x.itens.length}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>` : '<div class="empty-state">Nenhuma GRD emitida ainda.</div>';
 }
 
 /* ================= RELATÓRIO DE CAIXAS ================= */
