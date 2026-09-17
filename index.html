@@ -298,6 +298,8 @@
   .sheet-meta-row span.lbl{ font-weight:700; }
   .instrucoes-caixas-destaque{ font-weight:800; color:#C1121C; }
   .instrucoes-caixas-destaque span.lbl{ color:#C1121C; }
+  .observacao-destaque{ font-weight:800; color:#C1121C; }
+  .observacao-destaque span.lbl{ color:#C1121C; }
   table.sheet-table{ width:100%; border-collapse: collapse; margin-top: 12px; font-size: 11.5px; }
   table.sheet-table th{ background: #EFEFEF; border: 1px solid #999; padding: 6px 6px; font-size: 11px; text-transform: uppercase; }
   table.sheet-table td{ border: 1px solid #999; padding: 5px 6px; }
@@ -619,7 +621,11 @@
         </label>
         <select id="f-instrucoes-caixas"></select>
       </div>
-      <div class="field"></div>
+      <div class="field">
+        <label for="f-observacao">Observação</label>
+        <input type="text" id="f-observacao" placeholder="Ex: entregar com urgência">
+        <div class="hint">Aparece na GRD em negrito e vermelho. Na hora de imprimir/gerar o PDF você escolhe se ela entra ou não.</div>
+      </div>
     </div>
   </div>
 
@@ -976,6 +982,9 @@
       <div class="sheet-meta-row" id="p-instrucoes-caixas-row">
         <div class="instrucoes-caixas-destaque"><span class="lbl">INSTRUÇÕES DAS CAIXAS:</span> <span id="p-instrucoes-caixas"></span></div>
       </div>
+      <div class="sheet-meta-row" id="p-observacao-row" style="display:none;">
+        <div class="observacao-destaque"><span class="lbl">OBSERVAÇÃO:</span> <span id="p-observacao"></span></div>
+      </div>
     </div>
     <table class="sheet-table">
       <thead>
@@ -1075,7 +1084,7 @@ async function init(){
   document.getElementById('f-cliente').addEventListener('change', async () => { renderSetorSelect(); await salvarSessao(); });
   document.getElementById('f-setor').addEventListener('change', onSetorSelectChange);
   document.getElementById('f-instrucoes-caixas').addEventListener('change', onInstrucoesCaixasChange);
-  ['f-data','f-area-remetente','f-nome-remetente','f-area-destinatario','f-nome-destinatario']
+  ['f-data','f-area-remetente','f-nome-remetente','f-area-destinatario','f-nome-destinatario','f-observacao']
     .forEach(id => document.getElementById(id).addEventListener('input', salvarSessao));
 
   await carregarCadastro();
@@ -3015,6 +3024,7 @@ async function novaGRD(){
   document.getElementById('f-area-destinatario').value = '';
   document.getElementById('f-nome-destinatario').value = '';
   document.getElementById('f-instrucoes-caixas').value = '';
+  document.getElementById('f-observacao').value = '';
   document.getElementById('f-cliente').value = '';
   renderSetorSelect();
   document.getElementById('f-objeto').value = '';
@@ -3037,6 +3047,7 @@ function dadosGrdAtual(){
     areaDestinatario: document.getElementById('f-area-destinatario').value,
     nomeDestinatario: document.getElementById('f-nome-destinatario').value,
     instrucoesCaixas: document.getElementById('f-instrucoes-caixas').value,
+    observacao: document.getElementById('f-observacao').value,
     itens: JSON.parse(JSON.stringify(itens))
   };
 }
@@ -3063,7 +3074,7 @@ function ordenarAgruparPorCaixaImpressao(itensArr){
 }
 
 /* ================= FOLHA DE IMPRESSÃO ================= */
-function montarFolhaImpressao(dados, incluirRefCliente){
+function montarFolhaImpressao(dados, incluirRefCliente, incluirObservacao){
   document.getElementById('p-data').textContent = formatarDataBR(dados.data);
   document.getElementById('p-area-remetente').textContent = dados.areaRemetente || '';
   document.getElementById('p-nome-remetente').textContent = dados.nomeRemetente || '';
@@ -3071,6 +3082,8 @@ function montarFolhaImpressao(dados, incluirRefCliente){
   document.getElementById('p-nome-destinatario').textContent = dados.nomeDestinatario || '';
   document.getElementById('p-instrucoes-caixas').textContent = dados.instrucoesCaixas || '';
   document.getElementById('p-instrucoes-caixas-row').style.display = dados.instrucoesCaixas ? '' : 'none';
+  document.getElementById('p-observacao').textContent = dados.observacao || '';
+  document.getElementById('p-observacao-row').style.display = (incluirObservacao && dados.observacao) ? '' : 'none';
 
   const thRef = document.getElementById('p-th-refcliente');
   const tituloRow = document.getElementById('p-title-row');
@@ -3102,7 +3115,7 @@ async function abrirModalImprimirAtual(){
   }
   const dados = dadosGrdAtual();
   grdAtualId = dados.id;
-  montarFolhaImpressao(dados, false);
+  montarFolhaImpressao(dados, false, true);
   await salvarNoHistorico(dados);
   abrirModalOpcoesImpressao(dados);
 }
@@ -3118,6 +3131,15 @@ function abrirModalOpcoesImpressao(dados){
       </label>
       <div class="hint" style="margin-top:4px;">Adiciona uma coluna com o nº/etiqueta da caixa do cliente registrada no recebimento (quando o objeto tiver essa referência cadastrada).</div>
     </div>
+    ${dados.observacao ? `
+    <div style="margin-bottom:14px; padding:10px 12px; background: var(--verde-claro); border-radius:8px;">
+      <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:700; font-size:13px; color: var(--verde-escuro); text-transform:none;">
+        <input type="checkbox" id="chk-incluir-observacao-imp" style="width:18px;height:18px;" checked>
+        Incluir linha de observação
+      </label>
+      <div class="hint" style="margin-top:4px;">Observação cadastrada: <strong style="color:#C1121C;">${escapeHtml(dados.observacao)}</strong> — aparece em negrito e vermelho na GRD.</div>
+    </div>
+    ` : ''}
     <div class="imprimir-opcoes">
       <div class="opcao-card" onclick="confirmarImpressaoGRD('imprimir')">
         <div class="ico">🖨️</div>
@@ -3137,10 +3159,12 @@ function confirmarImpressaoGRD(tipo){
   if(!dados) return;
   const chk = document.getElementById('chk-incluir-ref-cliente-imp');
   const incluirRefCliente = !!(chk && chk.checked);
-  montarFolhaImpressao(dados, incluirRefCliente);
+  const chkObs = document.getElementById('chk-incluir-observacao-imp');
+  const incluirObservacao = chkObs ? !!chkObs.checked : true;
+  montarFolhaImpressao(dados, incluirRefCliente, incluirObservacao);
   fecharModal();
   if(tipo === 'pdf'){
-    gerarPDF(dados, incluirRefCliente);
+    gerarPDF(dados, incluirRefCliente, incluirObservacao);
   }else{
     acionarImpressao();
   }
@@ -3148,7 +3172,7 @@ function confirmarImpressaoGRD(tipo){
 function acionarImpressao(){ window.print(); }
 
 /* ================= GERAÇÃO DE PDF ================= */
-function gerarPDF(dados, incluirRefCliente){
+function gerarPDF(dados, incluirRefCliente, incluirObservacao){
   try{
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
@@ -3182,6 +3206,12 @@ function gerarPDF(dados, incluirRefCliente){
         y += 5;
         doc.setFont('helvetica', 'bold'); doc.setTextColor(193, 18, 28);
         doc.text('INSTRUÇÕES DAS CAIXAS: ' + dados.instrucoesCaixas, margin, y);
+        doc.setTextColor(20, 20, 20); doc.setFont('helvetica', 'normal');
+      }
+      if(incluirObservacao && dados.observacao){
+        y += 5;
+        doc.setFont('helvetica', 'bold'); doc.setTextColor(193, 18, 28);
+        doc.text('OBSERVAÇÃO: ' + dados.observacao, margin, y);
         doc.setTextColor(20, 20, 20); doc.setFont('helvetica', 'normal');
       }
     }
@@ -3308,6 +3338,7 @@ async function editarHistoricoItem(id){
   document.getElementById('f-area-destinatario').value = dados.areaDestinatario || '';
   document.getElementById('f-nome-destinatario').value = dados.nomeDestinatario || '';
   document.getElementById('f-instrucoes-caixas').value = dados.instrucoesCaixas || '';
+  document.getElementById('f-observacao').value = dados.observacao || '';
   itens = JSON.parse(JSON.stringify(dados.itens || []));
   const primeiroCliente = itens.length ? itens[0].cliente : '';
   if(primeiroCliente) document.getElementById('f-cliente').value = primeiroCliente;
@@ -4550,6 +4581,7 @@ async function salvarSessao(){
     cliente: document.getElementById('f-cliente').value,
     setor: document.getElementById('f-setor').value,
     instrucoesCaixas: document.getElementById('f-instrucoes-caixas').value,
+    observacao: document.getElementById('f-observacao').value,
     itens: itens
   };
   await storageSet('sessao_atual', JSON.stringify(sessao), false);
@@ -4565,6 +4597,7 @@ async function carregarSessao(){
     document.getElementById('f-nome-remetente').value = s.nomeRemetente || '';
     document.getElementById('f-area-destinatario').value = s.areaDestinatario || '';
     document.getElementById('f-nome-destinatario').value = s.nomeDestinatario || '';
+    document.getElementById('f-observacao').value = s.observacao || '';
     itens = s.itens || [];
     if(s.cliente) document.getElementById('f-cliente').value = s.cliente;
     return s;
