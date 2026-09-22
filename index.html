@@ -6,6 +6,7 @@
 <title>Gerador de GRD — CEPE doc</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.12.3/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script>
   window.__firebaseReadyResolve = null;
@@ -1262,6 +1263,8 @@ async function gerarObjetoInterno(){
       contadoresObjetoInterno[sigla] = proximo;
       await salvarContadoresObjetoInterno();
       siglaInput.value = '';
+      const novoItem = itens[itens.length - 1];
+      if(novoItem) abrirModalEtiquetas([novoItem]);
     }
     return;
   }
@@ -1333,6 +1336,7 @@ async function gerarObjetoInterno(){
   await adicionarSetorCadastro(cliente, setor);
   let adicionados = 0, duplicados = 0;
   let maior = contadoresObjetoInterno[sigla] || 0;
+  const novosItensInterno = [];
   for(let n = numIni; n <= numFim; n++){
     const passo = n - numIni;
     const codigo = sigla + String(n).padStart(6, '0');
@@ -1343,6 +1347,7 @@ async function gerarObjetoInterno(){
       refCliente = refPrefixo + String(refNum).padStart(refLargura, '0') + refSufixo;
     }
     itens.push({ cliente, setor, objeto: codigo, caixa: caixaTipoAtual, caixaId: codigo, refCliente });
+    novosItensInterno.push(itens[itens.length - 1]);
     adicionados++;
     if(n > maior) maior = n;
   }
@@ -1358,6 +1363,7 @@ async function gerarObjetoInterno(){
   let msg = adicionados + ' objeto(s) interno(s) adicionado(s) — ' + sigla + String(numIni).padStart(6,'0') + ' a ' + sigla + String(numFim).padStart(6,'0') + ' (' + caixaTipoAtual + ')' + (usarRefCliente ? ', vinculados ao nº da caixa do cliente' : '') + '.';
   if(duplicados > 0) msg += ' ' + duplicados + ' já estavam na lista e foram ignorados.';
   mostrarStatus(msg, duplicados > 0 ? 'warn' : 'ok');
+  if(novosItensInterno.length > 0) abrirModalEtiquetas(novosItensInterno);
 }
 function toggleObjetoInternoRecebimento(){
   const bloco = document.getElementById('bloco-objeto-interno-receb');
@@ -1391,6 +1397,15 @@ async function gerarObjetoInternoRecebimento(){
       contadoresObjetoInterno[sigla] = proximo;
       await salvarContadoresObjetoInterno();
       siglaInput.value = '';
+      const novoItem = itensRecebimentoAtual[itensRecebimentoAtual.length - 1];
+      if(novoItem){
+        abrirModalEtiquetas([{
+          cliente: document.getElementById('f-receb-cliente').value.trim(),
+          setor: document.getElementById('f-receb-setor').value.trim(),
+          objeto: novoItem.objeto,
+          refCliente: novoItem.refCliente
+        }]);
+      }
     }
     return;
   }
@@ -1451,9 +1466,12 @@ async function gerarObjetoInternoRecebimento(){
     usarRefCliente = true;
   }
 
+  const clienteReceb = document.getElementById('f-receb-cliente').value.trim();
+  const setorReceb = document.getElementById('f-receb-setor').value.trim();
   await carregarContadoresObjetoInterno();
   let adicionados = 0, duplicados = 0;
   let maior = contadoresObjetoInterno[sigla] || 0;
+  const novosItensInterno = [];
   for(let n = numIni; n <= numFim; n++){
     const passo = n - numIni;
     const codigo = sigla + String(n).padStart(6, '0');
@@ -1464,6 +1482,7 @@ async function gerarObjetoInternoRecebimento(){
       refCliente = refPrefixo + String(refNum).padStart(refLargura, '0') + refSufixo;
     }
     itensRecebimentoAtual.push({ objeto: codigo, tipo: recebCaixaTipoAtual, caixaId: codigo, refCliente });
+    novosItensInterno.push({ cliente: clienteReceb, setor: setorReceb, objeto: codigo, refCliente });
     adicionados++;
     if(n > maior) maior = n;
   }
@@ -1478,6 +1497,7 @@ async function gerarObjetoInternoRecebimento(){
   let msg = adicionados + ' objeto(s) interno(s) adicionado(s) — ' + sigla + String(numIni).padStart(6,'0') + ' a ' + sigla + String(numFim).padStart(6,'0') + ' (' + recebCaixaTipoAtual + ')' + (usarRefCliente ? ', vinculados ao nº da caixa do cliente' : '') + '.';
   if(duplicados > 0) msg += ' ' + duplicados + ' já estavam na lista e foram ignorados.';
   mostrarStatus(msg, duplicados > 0 ? 'warn' : 'ok', 'receb-status');
+  if(novosItensInterno.length > 0) abrirModalEtiquetas(novosItensInterno);
 }
 
 function renderClienteSelect(){
@@ -3260,6 +3280,173 @@ function gerarPDF(dados, incluirRefCliente, incluirObservacao){
   }catch(e){
     console.error(e);
     alert('Não foi possível gerar o PDF automaticamente. Use a opção "Imprimir" e escolha "Salvar como PDF" na janela de impressão.');
+  }
+}
+
+/* ================= ETIQUETAS DE OBJETO (10cm x 5cm) ================= */
+function abrirModalEtiquetas(lista){
+  lista = (lista || []).filter(it => it && it.objeto);
+  if(lista.length === 0) return;
+  window.__etiquetasParaImprimir = lista;
+  const pdfDisponivel = !!(window.jspdf && window.jspdf.jsPDF);
+  const barcodeDisponivel = typeof JsBarcode !== 'undefined';
+  const qtd = lista.length;
+  const html = `
+    <h3>Imprimir etiqueta${qtd > 1 ? 's' : ''} do${qtd > 1 ? 's' : ''} objeto${qtd > 1 ? 's' : ''} gerado${qtd > 1 ? 's' : ''}?</h3>
+    <div class="hint" style="margin-bottom:14px;">${qtd} etiqueta${qtd > 1 ? 's' : ''} de 10cm x 5cm, com logo, código de barra, cliente, setor, objeto e nº da caixa do cliente.</div>
+    <div class="imprimir-opcoes">
+      <div class="opcao-card" onclick="confirmarEtiquetas('imprimir')">
+        <div class="ico">🖨️</div>
+        <div class="txt"><strong>Imprimir</strong><span>Abre a janela de impressão do navegador (etiqueta 10x5cm).</span></div>
+      </div>
+      <div class="opcao-card" style="${pdfDisponivel ? '' : 'opacity:0.5; cursor:not-allowed;'}" onclick="${pdfDisponivel ? `confirmarEtiquetas('pdf')` : ''}">
+        <div class="ico">📄</div>
+        <div class="txt"><strong>Baixar PDF</strong><span>${pdfDisponivel ? 'Etiqueta em PDF, já no tamanho 10x5cm.' : 'Indisponível sem internet.'}</span></div>
+      </div>
+      <div class="opcao-card" style="${barcodeDisponivel ? '' : 'opacity:0.5; cursor:not-allowed;'}" onclick="${barcodeDisponivel ? `confirmarEtiquetas('zpl')` : ''}">
+        <div class="ico">🏷️</div>
+        <div class="txt"><strong>Baixar ZPL</strong><span>Arquivo .zpl para impressora térmica (Zebra) 10x5cm.</span></div>
+      </div>
+    </div>
+    <div class="modal-close"><button class="btn ghost" onclick="fecharModal()">Agora não</button></div>
+  `;
+  abrirModal(html);
+}
+function confirmarEtiquetas(tipo){
+  const lista = window.__etiquetasParaImprimir;
+  fecharModal();
+  if(!lista || lista.length === 0) return;
+  if(tipo === 'imprimir') imprimirEtiquetasJanela(lista);
+  else if(tipo === 'pdf') baixarEtiquetasPDF(lista);
+  else if(tipo === 'zpl') baixarEtiquetasZPL(lista);
+}
+function montarBlocoEtiquetaHTML(it, idx){
+  return `
+    <div class="etq">
+      <div class="etq-top">
+        <img src="${LOGO_CEPE_DATAURI}" class="etq-logo" alt="logo">
+        <div class="etq-doc">DOC</div>
+      </div>
+      <div class="etq-campo"><span class="etq-lbl">CLIENTE</span><span class="etq-val">${escapeHtml(it.cliente || '')}</span></div>
+      <div class="etq-campo"><span class="etq-lbl">SETOR</span><span class="etq-val">${escapeHtml(it.setor || '')}</span></div>
+      <svg class="etq-barcode" id="etq-bc-${idx}"></svg>
+      <div class="etq-campo etq-objeto"><span class="etq-lbl">OBJETO</span><span class="etq-val">${escapeHtml(it.objeto || '')}</span></div>
+      <div class="etq-campo"><span class="etq-lbl">REF. CAIXA CLIENTE</span><span class="etq-val">${escapeHtml(it.refCliente || '-')}</span></div>
+    </div>`;
+}
+function imprimirEtiquetasJanela(lista){
+  const w = window.open('', '_blank');
+  if(!w){
+    mostrarStatus('O navegador bloqueou a janela de impressão. Permita pop-ups para este site.', 'error');
+    return;
+  }
+  const blocos = lista.map((it, idx) => montarBlocoEtiquetaHTML(it, idx)).join('');
+  const codigos = JSON.stringify(lista.map(it => it.objeto || ''));
+  w.document.write('<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Etiquetas</title>'
+    + '<script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.12.3/JsBarcode.all.min.js"><\/script>'
+    + '<style>'
+    + '@page{ size: 100mm 50mm; margin: 0; }'
+    + '*{ box-sizing: border-box; }'
+    + 'body{ margin:0; font-family: Arial, Helvetica, sans-serif; }'
+    + '.etq{ width:100mm; height:50mm; padding: 3mm 5mm; display:flex; flex-direction:column; justify-content:center; gap:1.4mm; page-break-after: always; overflow:hidden; }'
+    + '.etq:last-child{ page-break-after: auto; }'
+    + '.etq-top{ display:flex; align-items:center; justify-content:space-between; margin-bottom: 0.5mm; }'
+    + '.etq-logo{ height: 7mm; }'
+    + '.etq-doc{ font-weight:bold; font-size: 10pt; color:#0A4E3A; letter-spacing:1px; }'
+    + '.etq-campo{ display:flex; gap:1.5mm; font-size: 8.5pt; line-height:1.15; }'
+    + '.etq-lbl{ font-weight:bold; color:#0A4E3A; min-width: 32mm; }'
+    + '.etq-val{ color:#111; word-break:break-word; }'
+    + '.etq-objeto .etq-val{ font-weight:bold; font-size:10pt; }'
+    + '.etq-barcode{ width:100%; height:13mm; margin: 0.5mm 0; }'
+    + '</style></head><body>' + blocos
+    + '<script>'
+    + 'window.onload = function(){'
+    + '  var codigos = ' + codigos + ';'
+    + '  codigos.forEach(function(codigo, idx){'
+    + '    try{ JsBarcode("#etq-bc-" + idx, codigo, { format:"CODE128", displayValue:false, height:44, margin:0 }); }catch(e){}'
+    + '  });'
+    + '  setTimeout(function(){ window.focus(); window.print(); }, 300);'
+    + '};'
+    + '<\/script>'
+    + '</body></html>');
+  w.document.close();
+}
+function gerarBarcodeDataURL(codigo){
+  try{
+    const canvas = document.createElement('canvas');
+    JsBarcode(canvas, codigo || '', { format:'CODE128', displayValue:false, height:60, margin:0 });
+    return canvas.toDataURL('image/png');
+  }catch(e){ return null; }
+}
+function baixarEtiquetasPDF(lista){
+  try{
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit:'mm', format:[100,50] });
+    lista.forEach((it, idx) => {
+      if(idx > 0) doc.addPage([100,50]);
+      try{ doc.addImage(LOGO_CEPE_DATAURI, 'PNG', 5, 4, 12, 12); }catch(e){}
+      doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(10,78,58);
+      doc.text('DOC', 95, 10, { align:'right' });
+      doc.setDrawColor(14,107,79); doc.setLineWidth(0.4);
+      doc.line(5, 17, 95, 17);
+
+      let y = 22.5;
+      doc.setFontSize(8.5); doc.setTextColor(10,78,58); doc.setFont('helvetica','bold');
+      doc.text('CLIENTE:', 5, y); doc.setTextColor(20,20,20); doc.setFont('helvetica','normal');
+      doc.text(String(it.cliente || ''), 24, y, { maxWidth: 71 });
+      y += 4.4;
+      doc.setTextColor(10,78,58); doc.setFont('helvetica','bold');
+      doc.text('SETOR:', 5, y); doc.setTextColor(20,20,20); doc.setFont('helvetica','normal');
+      doc.text(String(it.setor || ''), 24, y, { maxWidth: 71 });
+      y += 5.3;
+
+      const barcodeUrl = gerarBarcodeDataURL(it.objeto || '');
+      if(barcodeUrl){
+        try{ doc.addImage(barcodeUrl, 'PNG', 5, y, 90, 13); }catch(e){}
+      }
+      y += 15.8;
+      doc.setFontSize(9.5); doc.setFont('helvetica','bold'); doc.setTextColor(10,78,58);
+      doc.text('OBJETO:', 5, y); doc.setTextColor(20,20,20);
+      doc.text(String(it.objeto || ''), 22, y);
+      y += 4.6;
+      doc.setFontSize(8); doc.setFont('helvetica','bold'); doc.setTextColor(10,78,58);
+      doc.text('REF. CAIXA CLIENTE:', 5, y); doc.setTextColor(20,20,20); doc.setFont('helvetica','normal');
+      doc.text(String(it.refCliente || '-'), 33, y, { maxWidth: 62 });
+    });
+    doc.save(`etiquetas_${hoje()}.pdf`);
+    mostrarStatus('PDF de etiqueta(s) gerado com sucesso.', 'ok');
+  }catch(e){
+    console.error(e);
+    mostrarStatus('Erro ao gerar PDF das etiquetas: ' + e.message, 'error');
+  }
+}
+function zplEscape(txt){
+  return String(txt || '').replace(/\^/g, '').replace(/~/g, '').replace(/\\/g, '');
+}
+function baixarEtiquetasZPL(lista){
+  try{
+    let zpl = '';
+    lista.forEach(it => {
+      zpl += '^XA\n';
+      zpl += '^PW800\n^LL400\n^LH0,0\n';
+      zpl += '^FO30,20^A0N,26,26^FDDOC^FS\n';
+      zpl += '^FO30,58^A0N,24,24^FDCLIENTE: ' + zplEscape(it.cliente) + '^FS\n';
+      zpl += '^FO30,92^A0N,22,22^FDSETOR: ' + zplEscape(it.setor) + '^FS\n';
+      zpl += '^FO30,130^BY2,3,60\n^BCN,80,N,N,N\n^FD' + zplEscape(it.objeto) + '^FS\n';
+      zpl += '^FO30,235^A0N,28,28^FDOBJETO: ' + zplEscape(it.objeto) + '^FS\n';
+      zpl += '^FO30,275^A0N,22,22^FDREF. CAIXA CLIENTE: ' + zplEscape(it.refCliente || '-') + '^FS\n';
+      zpl += '^XZ\n';
+    });
+    const blob = new Blob([zpl], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `etiquetas_${hoje()}.zpl`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    mostrarStatus('Arquivo ZPL de etiqueta(s) gerado com sucesso.', 'ok');
+  }catch(e){
+    console.error(e);
+    mostrarStatus('Erro ao gerar o ZPL das etiquetas: ' + e.message, 'error');
   }
 }
 
