@@ -3285,7 +3285,17 @@ function gerarPDF(dados, incluirRefCliente, incluirObservacao){
 
 /* ================= ETIQUETAS DE OBJETO (10cm x 5cm) ================= */
 function objetoEhInterno(codigo){
-  return /[A-Za-z]/.test(String(codigo || ''));
+  codigo = String(codigo || '').trim();
+  if(!codigo) return false;
+  // objeto interno = sigla (letras e/ou números) + 6 dígitos sequenciais no final
+  if(/[A-Za-z]/.test(codigo)) return true; // tem letra: só objeto interno tem, objeto bipado é só dígito
+  // sigla só numérica (ex: sigla "123"): compara o prefixo com as siglas já usadas pra gerar objeto interno
+  if(codigo.length > 6){
+    const prefixo = codigo.slice(0, -6);
+    const sufixo = codigo.slice(-6);
+    if(/^\d{6}$/.test(sufixo) && Object.prototype.hasOwnProperty.call(contadoresObjetoInterno, prefixo)) return true;
+  }
+  return false;
 }
 function abrirModalEtiquetas(lista){
   lista = (lista || []).filter(it => it && it.objeto);
