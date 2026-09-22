@@ -3284,6 +3284,9 @@ function gerarPDF(dados, incluirRefCliente, incluirObservacao){
 }
 
 /* ================= ETIQUETAS DE OBJETO (10cm x 5cm) ================= */
+function objetoEhInterno(codigo){
+  return /[A-Za-z]/.test(String(codigo || ''));
+}
 function abrirModalEtiquetas(lista){
   lista = (lista || []).filter(it => it && it.objeto);
   if(lista.length === 0) return;
@@ -4654,12 +4657,32 @@ function renderRecebimentos(){
         <td>${trocasTxt}</td>
         <td class="actions-cell">
           <button class="btn secondary mini" onclick="imprimirObjetosRecebimento('${r.id}')">Imprimir objetos</button>
+          ${temObjetoInternoRecebimento(r) ? `<button class="btn secondary mini" onclick="imprimirEtiquetasInternasRecebimento('${r.id}')">🏷️ Etiquetas internas</button>` : ''}
           <button class="btn secondary mini" onclick="exportarCSVRecebimento('${r.id}')">CSV</button>
           <button class="btn secondary mini" onclick="abrirModalEditarRecebimento('${r.id}')">Editar</button>
           <button class="btn danger mini" onclick="excluirRecebimento('${r.id}')">Excluir</button>
         </td>
       </tr>`;
   }).join('');
+}
+function temObjetoInternoRecebimento(r){
+  return (r.objetos || []).some(it => objetoEhInterno(it.objeto));
+}
+function imprimirEtiquetasInternasRecebimento(id){
+  const r = recebimentos.find(x => x.id === id);
+  if(!r){
+    mostrarStatus('Esse recebimento não existe mais.', 'error', 'receb-status');
+    renderRecebimentos();
+    return;
+  }
+  const lista = (r.objetos || [])
+    .filter(it => objetoEhInterno(it.objeto))
+    .map(it => ({ cliente: r.cliente, setor: r.setor, objeto: it.objeto, refCliente: it.refCliente || '' }));
+  if(lista.length === 0){
+    mostrarStatus('Esse recebimento não tem objetos internos para gerar etiqueta.', 'warn', 'receb-status');
+    return;
+  }
+  abrirModalEtiquetas(lista);
 }
 async function alterarStatusRecebimentoInline(id, novoStatus){
   await carregarRecebimentos();
