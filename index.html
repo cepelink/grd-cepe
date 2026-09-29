@@ -789,6 +789,18 @@
             <option value="recebimento">Recebimentos</option>
           </select>
         </div>
+        <div class="field">
+          <label for="rel-periodo">Período (filtro)</label>
+          <select id="rel-periodo" onchange="onPeriodoRelatorioChange()">
+            <option value="todos">Todo o período</option>
+            <option value="mes-atual">Mês atual</option>
+            <option value="mes-escolhido">Escolher mês...</option>
+          </select>
+        </div>
+        <div class="field" id="rel-mes-wrap" style="display:none;">
+          <label for="rel-mes">Mês</label>
+          <input type="month" id="rel-mes" onchange="renderRelatorio()">
+        </div>
         <div class="field" id="rel-filtro-instrucao-wrap">
           <label for="rel-filtro-instrucao">Instrução das caixas (filtro)</label>
           <select id="rel-filtro-instrucao" onchange="renderRelatorio()"></select>
@@ -2257,6 +2269,31 @@ function onFonteRelatorioChange(){
 }
 
 const REL_SEM_INSTRUCAO = '__sem_instrucao';
+function mesAtualISO(){
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+}
+function onPeriodoRelatorioChange(){
+  const modo = document.getElementById('rel-periodo').value;
+  const inp = document.getElementById('rel-mes');
+  document.getElementById('rel-mes-wrap').style.display = modo === 'mes-escolhido' ? '' : 'none';
+  if(modo === 'mes-escolhido' && !inp.value) inp.value = mesAtualISO();
+  renderRelatorio();
+}
+// Retorna 'AAAA-MM' do mês filtrado, ou '' quando o filtro é "Todo o período"
+function relMesFiltro(){
+  const modo = document.getElementById('rel-periodo').value;
+  if(modo === 'mes-atual') return mesAtualISO();
+  if(modo === 'mes-escolhido') return document.getElementById('rel-mes').value || '';
+  return '';
+}
+function relDataNoMes(dataISO, mes){ return !mes || (dataISO || '').slice(0,7) === mes; }
+function labelPeriodoFiltro(){
+  const mes = relMesFiltro();
+  if(!mes) return 'Todo o período';
+  const [a,m] = mes.split('-');
+  return m + '/' + a;
+}
 function relFonteEhGrd(){ return document.getElementById('rel-fonte').value !== 'recebimento'; }
 function labelColunaDetalhe(detalhar){
   return detalhar === 'cliente' ? 'Cliente' : detalhar === 'setor' ? 'Setor' : 'Instrução das caixas';
@@ -2373,9 +2410,11 @@ function agruparTrocasRelatorio(tipoPeriodo, detalhar){
   if(document.getElementById('rel-fonte').value !== 'recebimento') return {};
   const clienteFiltro = document.getElementById('rel-filtro-cliente').value;
   const setorFiltro = document.getElementById('rel-filtro-setor').value;
+  const mesFiltro = relMesFiltro();
   const grupos = {};
   recebimentos.forEach(r => {
     if(!r.caixasTrocadas) return;
+    if(!relDataNoMes(r.data, mesFiltro)) return;
     if(clienteFiltro && r.cliente !== clienteFiltro) return;
     if(setorFiltro && r.setor !== setorFiltro) return;
     const { chave: chavePeriodo, label: periodo } = periodoDe(r.data, tipoPeriodo);
@@ -2403,6 +2442,7 @@ function listarTrocasDetalhado(){
   const setorFiltro = document.getElementById('rel-filtro-setor').value;
   return recebimentos
     .filter(r => r.caixasTrocadas > 0)
+    .filter(r => relDataNoMes(r.data, relMesFiltro()))
     .filter(r => !clienteFiltro || r.cliente === clienteFiltro)
     .filter(r => !setorFiltro || r.setor === setorFiltro)
     .map(r => ({
@@ -2487,7 +2527,9 @@ function agruparRelatorio(tipoPeriodo, detalhar){
   const clienteFiltro = document.getElementById('rel-filtro-cliente').value;
   const setorFiltro = document.getElementById('rel-filtro-setor').value;
   const instrFiltro = relFonteEhGrd() ? document.getElementById('rel-filtro-instrucao').value : '';
+  const mesFiltro = relMesFiltro();
   const linhas = dadosRelatorioBrutos().filter(l =>
+    relDataNoMes(l.data, mesFiltro) &&
     (!clienteFiltro || l.cliente === clienteFiltro) &&
     (!setorFiltro || l.setor === setorFiltro) &&
     (!instrFiltro || (instrFiltro === REL_SEM_INSTRUCAO ? !l.instrucao : l.instrucao === instrFiltro))
@@ -2710,6 +2752,7 @@ function imprimirRelatorio(){
     <div><span class="lbl">Emitido em:</span> ${emissaoTxt}</div>
     <div><span class="lbl">Cliente:</span> ${escapeHtml(clienteFiltro)}</div>
     <div><span class="lbl">Setor:</span> ${escapeHtml(setorFiltro)}</div>
+    <div><span class="lbl">Período:</span> ${escapeHtml(labelPeriodoFiltro())}</div>
     ${instrFiltroSel !== null ? `<div><span class="lbl">Instrução das caixas:</span> ${escapeHtml(instrFiltroTxt)}</div>` : ''}
     <div><span class="lbl">Agrupado por:</span> ${escapeHtml(labelPeriodo)}</div>
     <div><span class="lbl">Detalhado por:</span> ${escapeHtml(labelDetalhar)}</div>
