@@ -789,6 +789,10 @@
             <option value="recebimento">Recebimentos</option>
           </select>
         </div>
+        <div class="field" id="rel-filtro-instrucao-wrap">
+          <label for="rel-filtro-instrucao">Instrução das caixas (filtro)</label>
+          <select id="rel-filtro-instrucao" onchange="renderRelatorio()"></select>
+        </div>
       </div>
       <div class="grid grid-4" style="margin-bottom:12px;">
         <div class="field">
@@ -813,6 +817,7 @@
             <option value="nenhum">Nenhum (só totais do período)</option>
             <option value="cliente">Cliente</option>
             <option value="setor">Setor</option>
+            <option value="instrucao" id="rel-detalhar-opt-instrucao">Instrução das caixas</option>
           </select>
         </div>
       </div>
@@ -2246,8 +2251,33 @@ async function atualizarRelatorio(){
 function onFonteRelatorioChange(){
   document.getElementById('rel-filtro-cliente').value = '';
   document.getElementById('rel-filtro-setor').value = '';
+  document.getElementById('rel-filtro-instrucao').value = '';
   renderFiltrosRelatorio();
   renderRelatorio();
+}
+
+const REL_SEM_INSTRUCAO = '__sem_instrucao';
+function relFonteEhGrd(){ return document.getElementById('rel-fonte').value !== 'recebimento'; }
+function labelColunaDetalhe(detalhar){
+  return detalhar === 'cliente' ? 'Cliente' : detalhar === 'setor' ? 'Setor' : 'Instrução das caixas';
+}
+function renderFiltroInstrucaoOptions(){
+  const ehGrd = relFonteEhGrd();
+  document.getElementById('rel-filtro-instrucao-wrap').style.display = ehGrd ? '' : 'none';
+  document.getElementById('rel-detalhar-opt-instrucao').hidden = !ehGrd;
+  document.getElementById('rel-detalhar-opt-instrucao').disabled = !ehGrd;
+  const selDet = document.getElementById('rel-detalhar');
+  if(!ehGrd && selDet.value === 'instrucao') selDet.value = 'nenhum';
+  const sel = document.getElementById('rel-filtro-instrucao');
+  if(!ehGrd){ sel.innerHTML = ''; return; }
+  const atual = sel.value;
+  const linhas = dadosRelatorioBrutos();
+  const instrucoes = [...new Set(linhas.map(l => l.instrucao).filter(Boolean))].sort((a,b) => a.localeCompare(b));
+  const temSem = linhas.some(l => !l.instrucao);
+  sel.innerHTML = '<option value="">Todas as instruções</option>' +
+    instrucoes.map(i => `<option value="${escapeHtml(i)}">${escapeHtml(i)}</option>`).join('') +
+    (temSem ? `<option value="${REL_SEM_INSTRUCAO}">(sem instrução)</option>` : '');
+  if(atual && Array.from(sel.options).some(o => o.value === atual)) sel.value = atual;
 }
 
 function renderFiltrosRelatorio(){
@@ -2259,6 +2289,7 @@ function renderFiltrosRelatorio(){
     clientes.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
   if(clientes.includes(clienteAtual)) selCliente.value = clienteAtual;
   renderFiltroSetorOptions();
+  renderFiltroInstrucaoOptions();
 }
 
 function renderFiltroSetorOptions(){
@@ -2305,7 +2336,7 @@ function flattenHistorico(){
   const linhas = [];
   historico.forEach(g => {
     (g.itens || []).forEach(it => {
-      linhas.push({ data: g.data, cliente: it.cliente, setor: it.setor, caixa: it.caixa });
+      linhas.push({ data: g.data, cliente: it.cliente, setor: it.setor, caixa: it.caixa, instrucao: (g.instrucoesCaixas || '').trim() });
     });
   });
   return linhas;
@@ -2455,15 +2486,17 @@ function exportarCSVTrocasDetalhado(){
 function agruparRelatorio(tipoPeriodo, detalhar){
   const clienteFiltro = document.getElementById('rel-filtro-cliente').value;
   const setorFiltro = document.getElementById('rel-filtro-setor').value;
+  const instrFiltro = relFonteEhGrd() ? document.getElementById('rel-filtro-instrucao').value : '';
   const linhas = dadosRelatorioBrutos().filter(l =>
     (!clienteFiltro || l.cliente === clienteFiltro) &&
-    (!setorFiltro || l.setor === setorFiltro)
+    (!setorFiltro || l.setor === setorFiltro) &&
+    (!instrFiltro || (instrFiltro === REL_SEM_INSTRUCAO ? !l.instrucao : l.instrucao === instrFiltro))
   );
   const trocasPorGrupo = agruparTrocasRelatorio(tipoPeriodo, detalhar);
   const grupos = {};
   linhas.forEach(l => {
     const { chave: chavePeriodo, label: periodo } = periodoDe(l.data, tipoPeriodo);
-    const chaveDetalhe = detalhar === 'cliente' ? (l.cliente || '(sem cliente)') : detalhar === 'setor' ? (l.setor || '(sem setor)') : '';
+    const chaveDetalhe = detalhar === 'cliente' ? (l.cliente || '(sem cliente)') : detalhar === 'setor' ? (l.setor || '(sem setor)') : detalhar === 'instrucao' ? (l.instrucao || '(sem instrução)') : '';
     const chave = chavePeriodo + '||' + chaveDetalhe;
     if(!grupos[chave]) grupos[chave] = { chavePeriodo, periodo, detalhe: chaveDetalhe, porTipo: {}, total: 0 };
     const tipo = l.caixa || '(sem tipo)';
@@ -2517,7 +2550,7 @@ function renderRelatorio(){
   const labelFonte = document.getElementById('rel-fonte').value === 'recebimento' ? 'Recebidas' : 'Enviadas (GRD)';
   document.getElementById('relatorio-thead-row').innerHTML = `
     <th>${labelPeriodo}</th>
-    ${detalhar !== 'nenhum' ? `<th>${detalhar === 'cliente' ? 'Cliente' : 'Setor'}</th>` : ''}
+    ${detalhar !== 'nenhum' ? `<th>${labelColunaDetalhe(detalhar)}</th>` : ''}
     ${colunasTipo.map(t => `<th class="center">${escapeHtml(t)}</th>`).join('')}
     ${mostrarTrocas ? '<th class="center">Caixas trocadas (qtd / tipo)</th>' : ''}
     <th class="center">Total ${escapeHtml(labelFonte)}</th>
@@ -2569,7 +2602,9 @@ function imprimirRelatorio(){
   const labelFonte = document.getElementById('rel-fonte').value === 'recebimento' ? 'Recebidas' : 'Enviadas (GRD)';
   const clienteFiltro = document.getElementById('rel-filtro-cliente').value || 'Todos';
   const setorFiltro = document.getElementById('rel-filtro-setor').value || 'Todos';
-  const labelDetalhar = detalhar === 'cliente' ? 'Cliente' : detalhar === 'setor' ? 'Setor' : 'Nenhum (só totais do período)';
+  const labelDetalhar = detalhar === 'nenhum' ? 'Nenhum (só totais do período)' : labelColunaDetalhe(detalhar);
+  const instrFiltroSel = relFonteEhGrd() ? document.getElementById('rel-filtro-instrucao').value : null;
+  const instrFiltroTxt = instrFiltroSel === null ? '' : (instrFiltroSel === '' ? 'Todas' : instrFiltroSel === REL_SEM_INSTRUCAO ? '(sem instrução)' : instrFiltroSel);
 
   const totaisPorTipo = {};
   let totalGeral = 0, totalTrocasGeral = 0;
@@ -2675,6 +2710,7 @@ function imprimirRelatorio(){
     <div><span class="lbl">Emitido em:</span> ${emissaoTxt}</div>
     <div><span class="lbl">Cliente:</span> ${escapeHtml(clienteFiltro)}</div>
     <div><span class="lbl">Setor:</span> ${escapeHtml(setorFiltro)}</div>
+    ${instrFiltroSel !== null ? `<div><span class="lbl">Instrução das caixas:</span> ${escapeHtml(instrFiltroTxt)}</div>` : ''}
     <div><span class="lbl">Agrupado por:</span> ${escapeHtml(labelPeriodo)}</div>
     <div><span class="lbl">Detalhado por:</span> ${escapeHtml(labelDetalhar)}</div>
     <div><span class="lbl">Fonte dos dados:</span> ${escapeHtml(labelFonte)}</div>
@@ -2683,7 +2719,7 @@ function imprimirRelatorio(){
     <thead>
       <tr>
         <th>${escapeHtml(labelPeriodo)}</th>
-        ${detalhar !== 'nenhum' ? `<th>${detalhar === 'cliente' ? 'Cliente' : 'Setor'}</th>` : ''}
+        ${detalhar !== 'nenhum' ? `<th>${labelColunaDetalhe(detalhar)}</th>` : ''}
         ${colunasTipo.map(t => `<th>${escapeHtml(t)}</th>`).join('')}
         ${mostrarTrocas ? '<th>Caixas trocadas (qtd / tipo)</th>' : ''}
         <th>Total ${escapeHtml(labelFonte)}</th>
@@ -2714,7 +2750,7 @@ function exportarRelatorioCSV(){
   const mostrarTrocas = document.getElementById('rel-fonte').value === 'recebimento';
 
   const colunasTipo = tiposColunasRelatorio(linhasAgrupadas);
-  let csv = 'PERIODO;' + (detalhar !== 'nenhum' ? (detalhar.toUpperCase() + ';') : '') +
+  let csv = 'PERIODO;' + (detalhar !== 'nenhum' ? (labelColunaDetalhe(detalhar).toUpperCase() + ';') : '') +
     colunasTipo.map(t => t.toUpperCase().replace(/;/g, ',')).join(';') +
     (mostrarTrocas ? ';CAIXAS TROCADAS (QTD);TIPO(S) DA(S) CAIXA(S) TROCADA(S)' : '') + ';TOTAL\n';
   linhasAgrupadas.forEach(g => {
