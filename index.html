@@ -4,6 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Gerador de GRD — CEPE doc</title>
+<!-- ===== PWA: ícone/logo ao instalar o app ===== -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0A4E3A">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="GRD CEPE">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.12.3/JsBarcode.all.min.js"></script>
@@ -4904,6 +4915,74 @@ async function carregarSessao(){
 }
 
 init();
+</script>
+
+
+<script>
+/* ===== PWA: service worker + atualização automática do sistema ===== */
+(function(){
+  if(!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) return;
+
+  var pagina = location.pathname;          // esta mesma página (index.html)
+  var baseline = null, avisado = false, checando = false, reg = null;
+
+  function hash(t){ var h = 5381; for(var i = 0; i < t.length; i++){ h = ((h << 5) + h + t.charCodeAt(i)) | 0; } return h + ':' + t.length; }
+  function buscarVersao(){
+    return fetch(pagina, { cache: 'no-store' })
+      .then(function(r){ return r.ok ? r.text() : null; })
+      .then(function(t){ return t ? hash(t) : null; })
+      .catch(function(){ return null; });
+  }
+
+  function mostrarAviso(){
+    if(document.getElementById('pwa-update-banner')) return;
+    var b = document.createElement('div');
+    b.id = 'pwa-update-banner';
+    b.style.cssText = 'position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:99999;'
+      + 'background:#0A4E3A;color:#fff;padding:12px 14px;border-radius:12px;display:flex;align-items:center;gap:12px;'
+      + 'box-shadow:0 6px 24px rgba(0,0,0,.3);font:600 14px system-ui,-apple-system,Segoe UI,sans-serif;max-width:520px;margin:0 auto;';
+    b.innerHTML = '<span style="flex:1">Nova versão do sistema disponível.</span>'
+      + '<button type="button" style="background:#fff;color:#0A4E3A;border:0;border-radius:8px;padding:8px 14px;font:700 14px system-ui,sans-serif;cursor:pointer">Atualizar agora</button>';
+    b.querySelector('button').onclick = function(){ location.reload(); };
+    document.body.appendChild(b);
+  }
+
+  function novaVersao(){
+    if(avisado) return;
+    avisado = true;
+    if(document.hidden){ location.reload(); return; }   // ninguém está usando: atualiza direto
+    mostrarAviso();                                     // em uso: não perde o que está sendo digitado
+    document.addEventListener('visibilitychange', function(){ if(document.hidden) location.reload(); });
+  }
+
+  function verificar(){
+    if(checando || avisado || !navigator.onLine) return;
+    checando = true;
+    if(reg){ try{ reg.update(); }catch(e){} }
+    buscarVersao().then(function(h){
+      checando = false;
+      if(!h) return;
+      if(baseline === null){ baseline = h; return; }
+      if(h !== baseline) novaVersao();
+    });
+  }
+
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(function(r){
+    reg = r;
+    r.addEventListener('updatefound', function(){
+      var w = r.installing;
+      if(!w) return;
+      w.addEventListener('statechange', function(){
+        if(w.state === 'installed' && navigator.serviceWorker.controller) novaVersao();
+      });
+    });
+  }).catch(function(e){ console.warn('Service worker não registrou:', e); });
+
+  window.addEventListener('load', function(){ setTimeout(verificar, 1500); });
+  document.addEventListener('visibilitychange', function(){ if(!document.hidden) verificar(); });
+  window.addEventListener('online', verificar);
+  setInterval(function(){ if(!document.hidden) verificar(); }, 10 * 60 * 1000);
+})();
 </script>
 
 </body>
