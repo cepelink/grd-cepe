@@ -2,6 +2,7 @@
   "name": "Gerador de GRD — CEPE doc",
   "short_name": "GRD CEPE",
   "description": "Gerador de Guia de Remessa de Documentos",
+  "id": "./",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
