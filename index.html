@@ -4756,6 +4756,7 @@ function renderRecebimentos(){
         <td>${avariasTxt}</td>
         <td>${trocasTxt}</td>
         <td class="actions-cell">
+          <button class="btn secondary mini" onclick="gerarPlacaArmazenamento('${r.id}')">🪧 Placa de armazenamento</button>
           <button class="btn secondary mini" onclick="imprimirObjetosRecebimento('${r.id}')">Imprimir objetos</button>
           ${temObjetoInternoRecebimento(r) ? `<button class="btn secondary mini" onclick="imprimirEtiquetasInternasRecebimento('${r.id}')">🏷️ Etiquetas internas</button>` : ''}
           <button class="btn secondary mini" onclick="exportarCSVRecebimento('${r.id}')">CSV</button>
@@ -4764,6 +4765,108 @@ function renderRecebimentos(){
         </td>
       </tr>`;
   }).join('');
+}
+/* ================= PLACA DE ARMAZENAMENTO (PDF paisagem) ================= */
+function gerarPlacaArmazenamento(id){
+  const r = recebimentos.find(x => x.id === id);
+  if(!r){
+    mostrarStatus('Esse recebimento não existe mais.', 'error', 'receb-status');
+    renderRecebimentos();
+    return;
+  }
+  if(!(window.jspdf && window.jspdf.jsPDF)){
+    mostrarStatus('Biblioteca de PDF não carregou. Verifique a conexão e recarregue a página.', 'error', 'receb-status');
+    return;
+  }
+  try{
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const W = 297, H = 210, M = 18;
+
+    const VERDE_ESC = [10,78,58], VERDE = [14,107,79], VERDE_VIVO = [25,169,123], VERDE_CLARO = [231,242,237];
+    const setorTxt = String(r.setor || '').trim().toUpperCase();
+    const dataTxt = formatarDataBR(r.data);
+    const qtd = Number(r.total) || 0;
+
+    // fundo
+    doc.setFillColor(255,255,255); doc.rect(0,0,W,H,'F');
+
+    // faixa superior
+    doc.setFillColor(...VERDE_ESC); doc.rect(0,0,W,40,'F');
+    // formas decorativas translúcidas no canto
+    try{
+      doc.setGState(new doc.GState({ opacity: 0.18 }));
+      doc.setFillColor(...VERDE_VIVO);
+      doc.triangle(W-95,0, W,0, W,40, 'F');
+      doc.triangle(W-55,0, W,0, W,40, 'F');
+      doc.setGState(new doc.GState({ opacity: 1 }));
+    }catch(e){}
+    doc.setFillColor(...VERDE_VIVO); doc.rect(0,40,W,3.5,'F');
+
+    // selo com logo
+    doc.setFillColor(255,255,255); doc.roundedRect(M,8,24,24,4,4,'F');
+    try{ doc.addImage(LOGO_CEPE_DATAURI, 'PNG', M+2, 10, 20, 20); }catch(e){}
+
+    // título
+    doc.setFont('helvetica','bold'); doc.setTextColor(255,255,255); doc.setFontSize(24);
+    doc.text('PLACA DE ARMAZENAMENTO', M+32, 20);
+    doc.setFont('helvetica','normal'); doc.setFontSize(11); doc.setTextColor(190,227,211);
+    doc.text('Recebimento de caixas  |  CEPE', M+32, 28.5);
+
+    // rótulo SETOR
+    doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(...VERDE);
+    try{ doc.text('SETOR', M, 61, { charSpace: 2 }); }catch(e){ doc.text('SETOR', M, 61); }
+    doc.setFillColor(...VERDE_VIVO); doc.roundedRect(M, 64, 26, 1.8, 0.9, 0.9, 'F');
+
+    // nome do setor: BEM GRANDE, com ajuste automático de tamanho
+    const larguraMax = W - 2*M;
+    const zonaTopo = 70, zonaAlt = 62;
+    let tam = 120, linhas = [];
+    doc.setFont('helvetica','bold');
+    for(; tam >= 24; tam -= 2){
+      doc.setFontSize(tam);
+      linhas = doc.splitTextToSize(setorTxt || '—', larguraMax);
+      const lh = tam * 0.3528 * 1.1;
+      const largOk = linhas.every(l => doc.getTextWidth(l) <= larguraMax);
+      if(largOk && linhas.length * lh <= zonaAlt) break;
+    }
+    const lh = tam * 0.3528 * 1.1;
+    const blocoAlt = linhas.length * lh;
+    let y = zonaTopo + (zonaAlt - blocoAlt) / 2 + tam * 0.3528 * 0.85;
+    doc.setTextColor(20,35,29);
+    linhas.forEach(l => { doc.text(l, W/2, y, { align: 'center' }); y += lh; });
+
+    // cartões inferiores
+    const gap = 12, cardW = (W - 2*M - gap) / 2, cardH = 50, cardY = 140;
+    function cartao(x, rotulo, valor, unidade){
+      doc.setFillColor(...VERDE_CLARO); doc.roundedRect(x, cardY, cardW, cardH, 5, 5, 'F');
+      doc.setFillColor(...VERDE); doc.roundedRect(x, cardY, 4, cardH, 2, 2, 'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(...VERDE);
+      try{ doc.text(rotulo, x + 14, cardY + 13, { charSpace: 1 }); }catch(e){ doc.text(rotulo, x + 14, cardY + 13); }
+      doc.setFontSize(52); doc.setTextColor(...VERDE_ESC);
+      doc.text(valor, x + 14, cardY + 38);
+      if(unidade){
+        const wv = doc.getTextWidth(valor);
+        doc.setFontSize(18); doc.setTextColor(...VERDE);
+        doc.text(unidade, x + 14 + wv + 5, cardY + 38);
+      }
+    }
+    cartao(M, 'DATA DE RECEBIMENTO', dataTxt, '');
+    cartao(M + cardW + gap, 'QUANTIDADE DE CAIXAS', String(qtd), qtd === 1 ? 'caixa' : 'caixas');
+
+    // rodapé
+    doc.setFillColor(...VERDE_ESC); doc.rect(0, H-6, W, 6, 'F');
+    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(90,100,95);
+    doc.text('Cliente: ' + (r.cliente || '—'), M, H-10);
+    doc.text('cepe.com.br', W-M, H-10, { align: 'right' });
+
+    const nomeSeguro = (r.setor || 'setor').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]+/g,'_').replace(/^_+|_+$/g,'');
+    doc.save(`Placa_Armazenamento_${nomeSeguro}_${r.data || hoje()}.pdf`);
+    mostrarStatus('Placa de armazenamento gerada — ' + (r.setor || '') + '.', 'ok', 'receb-status');
+  }catch(e){
+    console.error(e);
+    mostrarStatus('Não foi possível gerar a placa: ' + e.message, 'error', 'receb-status');
+  }
 }
 function temObjetoInternoRecebimento(r){
   return (r.objetos || []).some(it => objetoEhInterno(it.objeto));
