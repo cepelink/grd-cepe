@@ -4813,15 +4813,33 @@ function gerarPlacaArmazenamento(id){
     doc.setFont('helvetica','normal'); doc.setFontSize(11); doc.setTextColor(190,227,211);
     doc.text('Recebimento de caixas  |  CEPE', M+32, 28.5);
 
+    // CLIENTE (nome do cliente, com ajuste automático de tamanho)
+    const clienteTxt = String(r.cliente || '').trim().toUpperCase();
+    const larguraMax = W - 2*M;
+    doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(...VERDE);
+    try{ doc.text('CLIENTE', M, 56, { charSpace: 2 }); }catch(e){ doc.text('CLIENTE', M, 56); }
+    doc.setFillColor(...VERDE_VIVO); doc.roundedRect(M, 58.5, 22, 1.6, 0.8, 0.8, 'F');
+    let tamC = 30, linhasC = [];
+    for(; tamC >= 14; tamC -= 1){
+      doc.setFontSize(tamC);
+      linhasC = doc.splitTextToSize(clienteTxt || '—', larguraMax);
+      if(linhasC.length <= 1 && linhasC.every(l => doc.getTextWidth(l) <= larguraMax)) break;
+    }
+    if(linhasC.length > 1) linhasC = [linhasC[0]];
+    doc.setTextColor(20,35,29);
+    doc.text(linhasC[0], M, 72);
+
+    // divisor
+    doc.setDrawColor(200,220,210); doc.setLineWidth(0.4); doc.line(M, 78, W-M, 78);
+
     // rótulo SETOR
-    doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(...VERDE);
-    try{ doc.text('SETOR', M, 61, { charSpace: 2 }); }catch(e){ doc.text('SETOR', M, 61); }
-    doc.setFillColor(...VERDE_VIVO); doc.roundedRect(M, 64, 26, 1.8, 0.9, 0.9, 'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(...VERDE);
+    try{ doc.text('SETOR', M, 87, { charSpace: 2 }); }catch(e){ doc.text('SETOR', M, 87); }
+    doc.setFillColor(...VERDE_VIVO); doc.roundedRect(M, 89.5, 18, 1.6, 0.8, 0.8, 'F');
 
     // nome do setor: BEM GRANDE, com ajuste automático de tamanho
-    const larguraMax = W - 2*M;
-    const zonaTopo = 70, zonaAlt = 62;
-    let tam = 120, linhas = [];
+    const zonaTopo = 93, zonaAlt = 44;
+    let tam = 110, linhas = [];
     doc.setFont('helvetica','bold');
     for(; tam >= 24; tam -= 2){
       doc.setFontSize(tam);
@@ -4837,18 +4855,18 @@ function gerarPlacaArmazenamento(id){
     linhas.forEach(l => { doc.text(l, W/2, y, { align: 'center' }); y += lh; });
 
     // cartões inferiores
-    const gap = 12, cardW = (W - 2*M - gap) / 2, cardH = 50, cardY = 140;
+    const gap = 12, cardW = (W - 2*M - gap) / 2, cardH = 46, cardY = 145;
     function cartao(x, rotulo, valor, unidade){
       doc.setFillColor(...VERDE_CLARO); doc.roundedRect(x, cardY, cardW, cardH, 5, 5, 'F');
       doc.setFillColor(...VERDE); doc.roundedRect(x, cardY, 4, cardH, 2, 2, 'F');
       doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(...VERDE);
-      try{ doc.text(rotulo, x + 14, cardY + 13, { charSpace: 1 }); }catch(e){ doc.text(rotulo, x + 14, cardY + 13); }
-      doc.setFontSize(52); doc.setTextColor(...VERDE_ESC);
-      doc.text(valor, x + 14, cardY + 38);
+      try{ doc.text(rotulo, x + 14, cardY + 12, { charSpace: 1 }); }catch(e){ doc.text(rotulo, x + 14, cardY + 12); }
+      doc.setFontSize(48); doc.setTextColor(...VERDE_ESC);
+      doc.text(valor, x + 14, cardY + 35);
       if(unidade){
         const wv = doc.getTextWidth(valor);
         doc.setFontSize(18); doc.setTextColor(...VERDE);
-        doc.text(unidade, x + 14 + wv + 5, cardY + 38);
+        doc.text(unidade, x + 14 + wv + 5, cardY + 35);
       }
     }
     cartao(M, 'DATA DE RECEBIMENTO', dataTxt, '');
@@ -4857,7 +4875,6 @@ function gerarPlacaArmazenamento(id){
     // rodapé
     doc.setFillColor(...VERDE_ESC); doc.rect(0, H-6, W, 6, 'F');
     doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(90,100,95);
-    doc.text('Cliente: ' + (r.cliente || '—'), M, H-10);
     doc.text('cepe.com.br', W-M, H-10, { align: 'right' });
 
     const nomeSeguro = (r.setor || 'setor').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]+/g,'_').replace(/^_+|_+$/g,'');
