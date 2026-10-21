@@ -3498,46 +3498,55 @@ function gerarBarcodeDataURL(codigo){
     return canvas.toDataURL('image/png');
   }catch(e){ return null; }
 }
-function baixarEtiquetasPDF(lista){
+function baixarEtiquetasZPL(lista){
   try{
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ unit:'mm', format:[100,50] });
-    lista.forEach((it, idx) => {
-      if(idx > 0) doc.addPage([100,50]);
-      try{ doc.addImage(LOGO_CEPE_DATAURI, 'PNG', 5, 4, 12, 12); }catch(e){}
-      doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(10,78,58);
-      doc.text('DOC', 95, 10, { align:'right' });
-      doc.setDrawColor(14,107,79); doc.setLineWidth(0.4);
-      doc.line(5, 17, 95, 17);
+    let zpl = '';
+    lista.forEach(it => {
+      const cliente = zplEscape(it.cliente);
+      const setor = zplEscape(it.setor);
+      const objeto = zplEscape(it.objeto);
+      const refCliente = zplEscape(it.refCliente || '-');
 
-      let y = 22.5;
-      doc.setFontSize(8.5); doc.setTextColor(10,78,58); doc.setFont('helvetica','bold');
-      doc.text('CLIENTE:', 5, y); doc.setTextColor(20,20,20); doc.setFont('helvetica','normal');
-      doc.text(String(it.cliente || ''), 24, y, { maxWidth: 71 });
-      y += 4.4;
-      doc.setTextColor(10,78,58); doc.setFont('helvetica','bold');
-      doc.text('SETOR:', 5, y); doc.setTextColor(20,20,20); doc.setFont('helvetica','normal');
-      doc.text(String(it.setor || ''), 24, y, { maxWidth: 71 });
-      y += 5.3;
+      // Cálculo aproximado para centralizar a barra de código de 128 (LARGURA: 800)
+      // Módulo BY2 (~11 dots por caractere + margens)
+      const numChars = objeto.length || 10;
+      const barcodeWidth = Math.min(700, numChars * 25 + 60);
+      const barcodeX = Math.max(10, Math.floor((800 - barcodeWidth) / 2));
 
-      const barcodeUrl = gerarBarcodeDataURL(it.objeto || '');
-      if(barcodeUrl){
-        try{ doc.addImage(barcodeUrl, 'PNG', 5, y, 90, 13); }catch(e){}
-      }
-      y += 15.8;
-      doc.setFontSize(9.5); doc.setFont('helvetica','bold'); doc.setTextColor(10,78,58);
-      doc.text('OBJETO:', 5, y); doc.setTextColor(20,20,20);
-      doc.text(String(it.objeto || ''), 22, y);
-      y += 4.6;
-      doc.setFontSize(8); doc.setFont('helvetica','bold'); doc.setTextColor(10,78,58);
-      doc.text('REF. CAIXA CLIENTE:', 5, y); doc.setTextColor(20,20,20); doc.setFont('helvetica','normal');
-      doc.text(String(it.refCliente || '-'), 33, y, { maxWidth: 62 });
+      zpl += '^XA\n';
+      zpl += '^PW800\n^LL400\n^LH0,0\n'; // Tamanho: 100mm x 50mm (800x400 dots)
+      
+      // LOGO / CABEÇALHO CENTRALIZADO
+      zpl += '^FO0,20^FB800,1,0,C^A0N,32,32^FDCEPE DOC^FS\n';
+      zpl += '^FO50,55^GB700,2,2^FS\n'; // Linha divisória centralizada
+
+      // CLIENTE E SETOR CENTRALIZADOS
+      zpl += '^FO0,68^FB800,1,0,C^A0N,24,24^FDCLIENTE: ' + cliente + '^FS\n';
+      zpl += '^FO0,98^FB800,1,0,C^A0N,22,22^FDSETOR: ' + setor + '^FS\n';
+
+      // CÓDIGO DE BARRAS CENTRALIZADO
+      zpl += '^FO' + barcodeX + ',130^BY2,3,80\n^BCN,80,N,N,N\n^FD' + objeto + '^FS\n';
+
+      // NÚMERO DO OBJETO E REFERÊNCIA CENTRALIZADOS
+      zpl += '^FO0,230^FB800,1,0,C^A0N,30,30^FDOBJETO: ' + objeto + '^FS\n';
+      zpl += '^FO0,270^FB800,1,0,C^A0N,22,22^FDREF. CAIXA CLIENTE: ' + refCliente + '^FS\n';
+
+      zpl += '^XZ\n';
     });
-    doc.save(`etiquetas_${hoje()}.pdf`);
-    mostrarStatus('PDF de etiqueta(s) gerado com sucesso.', 'ok');
+
+    const blob = new Blob([zpl], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; 
+    a.download = `etiquetas_${hoje()}.zpl`;
+    document.body.appendChild(a); 
+    a.click(); 
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    mostrarStatus('Arquivo ZPL de etiqueta(s) gerado com sucesso.', 'ok');
   }catch(e){
     console.error(e);
-    mostrarStatus('Erro ao gerar PDF das etiquetas: ' + e.message, 'error');
+    mostrarStatus('Erro ao gerar o ZPL das etiquetas: ' + e.message, 'error');
   }
 }
 function zplEscape(txt){
