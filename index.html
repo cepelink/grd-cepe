@@ -4420,6 +4420,10 @@ async function abrirModalEditarRecebimento(id){
     <div id="modal-edit-bloco-objeto-interno" style="display:none; margin-top:10px; padding-top:10px; border-top:1px dashed var(--cinza-borda);">
       <label for="modal-edit-sigla-interno">Sigla do cliente</label>
       <input type="text" id="modal-edit-sigla-interno" placeholder="Ex: PMPE" autocomplete="off" style="text-transform:uppercase;">
+      <div class="field" style="margin-top:8px;">
+        <label for="modal-edit-sigla-interno-ref">Nº da caixa do cliente (opcional)</label>
+        <input type="text" id="modal-edit-sigla-interno-ref" placeholder="Ex: etiqueta/nº original — p/ gerar 1 só objeto" autocomplete="off">
+      </div>
       <div class="grid grid-2" style="margin-top:8px;">
         <div class="field">
           <label for="modal-edit-sigla-interno-inicio">Nº inicial (opcional — p/ gerar vários)</label>
@@ -4596,6 +4600,9 @@ async function gerarObjetoInternoEdicaoRecebimento(){
     // sem intervalo: gera só o próximo número da sequência dessa sigla
     const refUnico = lerRefClienteUnico('modal-edit-sigla-interno-refcli-inicio', 'modal-edit-sigla-interno-refcli-fim');
     if(refUnico.erro){ mostrarStatus(refUnico.erro, 'warn', MSG); return; }
+    const refSimplesEl = document.getElementById('modal-edit-sigla-interno-ref');
+    const refSimples = refSimplesEl ? refSimplesEl.value.trim() : '';
+    if(refSimples) refUnico.ref = refSimples;
     await carregarContadoresObjetoInterno();
     let proximo = (contadoresObjetoInterno[sigla] || 0) + 1;
     let codigo = sigla + String(proximo).padStart(6, '0');
@@ -4611,12 +4618,18 @@ async function gerarObjetoInternoEdicaoRecebimento(){
       siglaInput.value = '';
       refIniInput.value = '';
       refFimInput.value = '';
+      if(refSimplesEl) refSimplesEl.value = '';
       mostrarStatus('Objeto interno ' + codigo + ' adicionado.', 'ok', MSG);
     }
     return;
   }
 
   // intervalo: gera vários de uma vez
+  const refSimplesInt = document.getElementById('modal-edit-sigla-interno-ref');
+  if(refSimplesInt && refSimplesInt.value.trim()){
+    mostrarStatus('Para gerar vários objetos, use os campos "Nº caixa do cliente inicial/final". O campo "Nº da caixa do cliente (opcional)" vale só para 1 objeto.', 'warn', MSG);
+    return;
+  }
   if(!tipoSel || !tipoSel.value){
     mostrarStatus('Cadastre/selecione um tipo de caixa antes de gerar objetos internos.', 'warn', MSG);
     return;
