@@ -3498,75 +3498,134 @@ function gerarBarcodeDataURL(codigo){
     return canvas.toDataURL('image/png');
   }catch(e){ return null; }
 }
-function baixarEtiquetasZPL(lista){
+function baixarEtiquetasPDF(lista){
   try{
-    let zpl = '';
-    lista.forEach(it => {
-      const cliente = zplEscape(it.cliente);
-      const setor = zplEscape(it.setor);
-      const objeto = zplEscape(it.objeto);
-      const refCliente = zplEscape(it.refCliente || '-');
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit:'mm', format:[100,50] });
+    lista.forEach((it, idx) => {
+      if(idx > 0) doc.addPage([100,50]);
+      try{ doc.addImage(LOGO_CEPE_DATAURI, 'PNG', 5, 4, 12, 12); }catch(e){}
+      doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(10,78,58);
+      doc.text('DOC', 95, 10, { align:'right' });
+      doc.setDrawColor(14,107,79); doc.setLineWidth(0.4);
+      doc.line(5, 17, 95, 17);
 
-      // Cálculo aproximado para centralizar a barra de código de 128 (LARGURA: 800)
-      // Módulo BY2 (~11 dots por caractere + margens)
-      const numChars = objeto.length || 10;
-      const barcodeWidth = Math.min(700, numChars * 25 + 60);
-      const barcodeX = Math.max(10, Math.floor((800 - barcodeWidth) / 2));
+      let y = 22.5;
+      doc.setFontSize(8.5); doc.setTextColor(10,78,58); doc.setFont('helvetica','bold');
+      doc.text('CLIENTE:', 5, y); doc.setTextColor(20,20,20); doc.setFont('helvetica','normal');
+      doc.text(String(it.cliente || ''), 24, y, { maxWidth: 71 });
+      y += 4.4;
+      doc.setTextColor(10,78,58); doc.setFont('helvetica','bold');
+      doc.text('SETOR:', 5, y); doc.setTextColor(20,20,20); doc.setFont('helvetica','normal');
+      doc.text(String(it.setor || ''), 24, y, { maxWidth: 71 });
+      y += 5.3;
 
-      zpl += '^XA\n';
-      zpl += '^PW800\n^LL400\n^LH0,0\n'; // Tamanho: 100mm x 50mm (800x400 dots)
-      
-      // LOGO / CABEÇALHO CENTRALIZADO
-      zpl += '^FO0,20^FB800,1,0,C^A0N,32,32^FDCEPE DOC^FS\n';
-      zpl += '^FO50,55^GB700,2,2^FS\n'; // Linha divisória centralizada
-
-      // CLIENTE E SETOR CENTRALIZADOS
-      zpl += '^FO0,68^FB800,1,0,C^A0N,24,24^FDCLIENTE: ' + cliente + '^FS\n';
-      zpl += '^FO0,98^FB800,1,0,C^A0N,22,22^FDSETOR: ' + setor + '^FS\n';
-
-      // CÓDIGO DE BARRAS CENTRALIZADO
-      zpl += '^FO' + barcodeX + ',130^BY2,3,80\n^BCN,80,N,N,N\n^FD' + objeto + '^FS\n';
-
-      // NÚMERO DO OBJETO E REFERÊNCIA CENTRALIZADOS
-      zpl += '^FO0,230^FB800,1,0,C^A0N,30,30^FDOBJETO: ' + objeto + '^FS\n';
-      zpl += '^FO0,270^FB800,1,0,C^A0N,22,22^FDREF. CAIXA CLIENTE: ' + refCliente + '^FS\n';
-
-      zpl += '^XZ\n';
+      const barcodeUrl = gerarBarcodeDataURL(it.objeto || '');
+      if(barcodeUrl){
+        try{ doc.addImage(barcodeUrl, 'PNG', 5, y, 90, 13); }catch(e){}
+      }
+      y += 15.8;
+      doc.setFontSize(9.5); doc.setFont('helvetica','bold'); doc.setTextColor(10,78,58);
+      doc.text('OBJETO:', 5, y); doc.setTextColor(20,20,20);
+      doc.text(String(it.objeto || ''), 22, y);
+      y += 4.6;
+      doc.setFontSize(8); doc.setFont('helvetica','bold'); doc.setTextColor(10,78,58);
+      doc.text('REF. CAIXA CLIENTE:', 5, y); doc.setTextColor(20,20,20); doc.setFont('helvetica','normal');
+      doc.text(String(it.refCliente || '-'), 33, y, { maxWidth: 62 });
     });
-
-    const blob = new Blob([zpl], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; 
-    a.download = `etiquetas_${hoje()}.zpl`;
-    document.body.appendChild(a); 
-    a.click(); 
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    mostrarStatus('Arquivo ZPL de etiqueta(s) gerado com sucesso.', 'ok');
+    doc.save(`etiquetas_${hoje()}.pdf`);
+    mostrarStatus('PDF de etiqueta(s) gerado com sucesso.', 'ok');
   }catch(e){
     console.error(e);
-    mostrarStatus('Erro ao gerar o ZPL das etiquetas: ' + e.message, 'error');
+    mostrarStatus('Erro ao gerar PDF das etiquetas: ' + e.message, 'error');
   }
 }
 function zplEscape(txt){
   return String(txt || '').replace(/\^/g, '').replace(/~/g, '').replace(/\\/g, '');
 }
-function baixarEtiquetasZPL(lista){
+/* Converte a logo (PNG/data URI) em bitmap 1-bit no formato ZPL (^GFA).
+   Fundo transparente vira branco; tamanho em dots (largura múltipla de 8). */
+let __logoZplCache = null;
+function logoParaZPL(tamanho){
+  if(__logoZplCache && __logoZplCache.tam === tamanho) return Promise.resolve(__logoZplCache);
+  return new Promise(resolve => {
+    try{
+      const img = new Image();
+      img.onload = function(){
+        try{
+          const w = Math.ceil(tamanho / 8) * 8, h = w;
+          const cv = document.createElement('canvas');
+          cv.width = w; cv.height = h;
+          const ctx = cv.getContext('2d');
+          ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
+          const px = ctx.getImageData(0, 0, w, h).data;
+          const bpr = w / 8;
+          let hex = '';
+          for(let y = 0; y < h; y++){
+            for(let bx = 0; bx < bpr; bx++){
+              let byte = 0;
+              for(let bit = 0; bit < 8; bit++){
+                const i = (y * w + bx * 8 + bit) * 4;
+                const lum = 0.299 * px[i] + 0.587 * px[i+1] + 0.114 * px[i+2];
+                if(lum < 160) byte |= (0x80 >> bit);
+              }
+              hex += byte.toString(16).toUpperCase().padStart(2, '0');
+            }
+          }
+          __logoZplCache = { tam: tamanho, w, h, bpr, total: bpr * h, hex };
+          resolve(__logoZplCache);
+        }catch(e){ console.error(e); resolve(null); }
+      };
+      img.onerror = function(){ resolve(null); };
+      img.src = LOGO_CEPE_DATAURI;
+    }catch(e){ console.error(e); resolve(null); }
+  });
+}
+/* Etiqueta 100mm x 50mm (203 dpi = 800 x 400 dots), tudo centralizado. */
+async function baixarEtiquetasZPL(lista){
   try{
+    const LARG = 800, ALT = 400;
+    const logo = await logoParaZPL(96);
     let zpl = '';
     lista.forEach(it => {
-      zpl += '^XA\n';
-      zpl += '^PW800\n^LL400\n^LH0,0\n';
-      zpl += '^FO30,20^A0N,26,26^FDDOC^FS\n';
-      zpl += '^FO30,58^A0N,24,24^FDCLIENTE: ' + zplEscape(it.cliente) + '^FS\n';
-      zpl += '^FO30,92^A0N,22,22^FDSETOR: ' + zplEscape(it.setor) + '^FS\n';
-      zpl += '^FO30,130^BY2,3,60\n^BCN,80,N,N,N\n^FD' + zplEscape(it.objeto) + '^FS\n';
-      zpl += '^FO30,235^A0N,28,28^FDOBJETO: ' + zplEscape(it.objeto) + '^FS\n';
-      zpl += '^FO30,275^A0N,22,22^FDREF. CAIXA CLIENTE: ' + zplEscape(it.refCliente || '-') + '^FS\n';
+      const cliente = zplEscape(it.cliente);
+      const setor = zplEscape(it.setor);
+      const objeto = zplEscape(it.objeto);
+      const ref = zplEscape(it.refCliente || '');
+      zpl += '^XA\n^CI28\n';
+      zpl += '^PW' + LARG + '\n^LL' + ALT + '\n^LH0,0\n';
+      // logo centralizada no topo
+      let y = 36; // margem superior (conteúdo centralizado também na vertical)
+      if(logo){
+        const lx = Math.round((LARG - logo.w) / 2);
+        zpl += '^FO' + lx + ',' + y + '^GFA,' + logo.total + ',' + logo.total + ',' + logo.bpr + ',' + logo.hex + '^FS\n';
+        y += logo.h + 8;
+      }
+      // textos centralizados (bloco com a largura toda da etiqueta, margem de 30 dots)
+      const fCli = cliente.length > 34 ? 22 : 28;
+      zpl += '^FO30,' + y + '^FB' + (LARG - 60) + ',1,0,C,0^A0N,' + fCli + ',' + fCli + '^FD' + cliente + '^FS\n';
+      y += fCli + 8;
+      const fSet = setor.length > 40 ? 20 : 24;
+      zpl += '^FO30,' + y + '^FB' + (LARG - 60) + ',1,0,C,0^A0N,' + fSet + ',' + fSet + '^FD' + setor + '^FS\n';
+      y += fSet + 12;
+      // código de barras Code 128 (subset B) centralizado: largura = (11*n + 35) módulos
+      const n = objeto.length || 1;
+      let modulo = 3;
+      if((11 * n + 35) * modulo > LARG - 40) modulo = 2;
+      const largBar = (11 * n + 35) * modulo;
+      const bx = Math.max(0, Math.round((LARG - largBar) / 2));
+      zpl += '^BY' + modulo + ',3,70\n';
+      zpl += '^FO' + bx + ',' + y + '^BCN,70,N,N,N\n^FD>:' + objeto + '^FS\n';
+      y += 70 + 10;
+      zpl += '^FO30,' + y + '^FB' + (LARG - 60) + ',1,0,C,0^A0N,32,32^FD' + objeto + '^FS\n';
+      y += 32 + 8;
+      if(ref){
+        zpl += '^FO30,' + y + '^FB' + (LARG - 60) + ',1,0,C,0^A0N,22,22^FDREF. CAIXA CLIENTE: ' + ref + '^FS\n';
+      }
       zpl += '^XZ\n';
     });
-    const blob = new Blob([zpl], { type: 'text/plain' });
+    const blob = new Blob([zpl], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = `etiquetas_${hoje()}.zpl`;
