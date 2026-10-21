@@ -1393,6 +1393,17 @@ async function gerarObjetoInterno(){
   mostrarStatus(msg, duplicados > 0 ? 'warn' : 'ok');
   if(novosItensInterno.length > 0) abrirModalEtiquetas(novosItensInterno);
 }
+/* Lê o nº da caixa do cliente para geração de 1 único objeto interno (sem intervalo).
+   Retorna { ref } ou { erro } */
+function lerRefClienteUnico(iniId, fimId){
+  const ini = document.getElementById(iniId);
+  const fim = document.getElementById(fimId);
+  const a = ini ? ini.value.trim() : '';
+  const b = fim ? fim.value.trim() : '';
+  if(!a && b) return { erro: 'Para gerar um só objeto interno, preencha o nº da caixa do cliente no campo "inicial".' };
+  if(a && b && a !== b) return { erro: 'Para gerar um só objeto interno, deixe o nº da caixa do cliente final em branco (ou igual ao inicial).' };
+  return { ref: a };
+}
 function toggleObjetoInternoRecebimento(){
   const bloco = document.getElementById('bloco-objeto-interno-receb');
   bloco.style.display = (bloco.style.display === 'none') ? '' : 'none';
@@ -1413,6 +1424,8 @@ async function gerarObjetoInternoRecebimento(){
 
   if(!bruteIni && !bruteFim){
     // sem intervalo informado: gera só o próximo número da sequência dessa sigla
+    const refUnico = lerRefClienteUnico('f-sigla-interno-receb-refcli-inicio', 'f-sigla-interno-receb-refcli-fim');
+    if(refUnico.erro){ mostrarStatus(refUnico.erro, 'warn', 'receb-status'); return; }
     await carregarContadoresObjetoInterno();
     let proximo = (contadoresObjetoInterno[sigla] || 0) + 1;
     let codigo = sigla + String(proximo).padStart(6, '0');
@@ -1420,11 +1433,15 @@ async function gerarObjetoInternoRecebimento(){
       proximo++;
       codigo = sigla + String(proximo).padStart(6, '0');
     }
-    const ok = adicionarObjetoRecebimento(codigo);
+    const ok = adicionarObjetoRecebimento(codigo, refUnico.ref);
     if(ok !== false){
       contadoresObjetoInterno[sigla] = proximo;
       await salvarContadoresObjetoInterno();
       siglaInput.value = '';
+      const rcI = document.getElementById('f-sigla-interno-receb-refcli-inicio');
+      const rcF = document.getElementById('f-sigla-interno-receb-refcli-fim');
+      if(rcI) rcI.value = '';
+      if(rcF) rcF.value = '';
       const novoItem = itensRecebimentoAtual[itensRecebimentoAtual.length - 1];
       if(novoItem){
         abrirModalEtiquetas([{
@@ -3698,7 +3715,7 @@ function atualizarPreviewObjetoRecebimento(){
 function onObjetoRecebimentoKeydown(e){
   if(e.key === 'Enter'){ e.preventDefault(); adicionarObjetoRecebimento(); }
 }
-function adicionarObjetoRecebimento(objetoInterno){
+function adicionarObjetoRecebimento(objetoInterno, refOverride){
   const objetoInput = document.getElementById('f-receb-objeto');
   const usandoObjetoInterno = typeof objetoInterno === 'string' && objetoInterno;
   const bruto = usandoObjetoInterno ? objetoInterno : objetoInput.value.trim();
@@ -3730,7 +3747,7 @@ function adicionarObjetoRecebimento(objetoInterno){
 
   const chkMesmaCaixa = document.getElementById('f-receb-mesma-caixa');
   const refClienteInput = document.getElementById('f-receb-ref-cliente');
-  const refCliente = refClienteInput ? refClienteInput.value.trim() : '';
+  const refCliente = (typeof refOverride === 'string' && refOverride) ? refOverride : (refClienteInput ? refClienteInput.value.trim() : '');
   const ultimo = itensRecebimentoAtual[itensRecebimentoAtual.length - 1];
   let tipo, caixaId, msgExtra = '';
   if(chkMesmaCaixa && chkMesmaCaixa.checked && ultimo){
@@ -4510,12 +4527,12 @@ function renderTabelaEdicaoRecebimento(){
     </tr>`;
   }).join('');
 }
-function adicionarObjetoEdicaoRecebimento(objetoInterno){
+function adicionarObjetoEdicaoRecebimento(objetoInterno, refOverride){
   const input = document.getElementById('modal-edit-novo-objeto');
   const tipoSel = document.getElementById('modal-edit-novo-objeto-tipo');
   const chkMesmaCaixa = document.getElementById('modal-edit-mesma-caixa');
   const refInput = document.getElementById('modal-edit-novo-objeto-ref');
-  const refCliente = refInput ? refInput.value.trim() : '';
+  const refCliente = (typeof refOverride === 'string' && refOverride) ? refOverride : (refInput ? refInput.value.trim() : '');
   const usandoObjetoInterno = typeof objetoInterno === 'string' && objetoInterno;
   const bruto = usandoObjetoInterno ? objetoInterno : input.value.trim();
   if(!bruto) return false;
@@ -4577,6 +4594,8 @@ async function gerarObjetoInternoEdicaoRecebimento(){
 
   if(!bruteIni && !bruteFim){
     // sem intervalo: gera só o próximo número da sequência dessa sigla
+    const refUnico = lerRefClienteUnico('modal-edit-sigla-interno-refcli-inicio', 'modal-edit-sigla-interno-refcli-fim');
+    if(refUnico.erro){ mostrarStatus(refUnico.erro, 'warn', MSG); return; }
     await carregarContadoresObjetoInterno();
     let proximo = (contadoresObjetoInterno[sigla] || 0) + 1;
     let codigo = sigla + String(proximo).padStart(6, '0');
@@ -4584,12 +4603,14 @@ async function gerarObjetoInternoEdicaoRecebimento(){
       proximo++;
       codigo = sigla + String(proximo).padStart(6, '0');
     }
-    const ok = adicionarObjetoEdicaoRecebimento(codigo);
+    const ok = adicionarObjetoEdicaoRecebimento(codigo, refUnico.ref);
     if(ok === true){
       contadoresObjetoInterno[sigla] = proximo;
       await salvarContadoresObjetoInterno();
       window.__etiquetasPendentesEdicao.push(codigo);
       siglaInput.value = '';
+      refIniInput.value = '';
+      refFimInput.value = '';
       mostrarStatus('Objeto interno ' + codigo + ' adicionado.', 'ok', MSG);
     }
     return;
