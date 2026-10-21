@@ -4313,6 +4313,7 @@ async function abrirModalEditarRecebimento(id){
   await carregarStatusCaixa();
 
   edicaoRecebimentoId = id;
+  window.__etiquetasPendentesEdicao = [];
   itensEdicaoRecebimento = (r.objetos || []).map(it => ({ objeto: it.objeto, tipo: it.tipo, caixaId: it.caixaId || it.objeto, refCliente: it.refCliente || '' }));
 
   const nomesClientes = Object.keys(cadastro).sort((a,b)=>a.localeCompare(b));
@@ -4398,6 +4399,33 @@ async function abrirModalEditarRecebimento(id){
         <button class="btn block" onclick="adicionarObjetoEdicaoRecebimento()">Adicionar</button>
       </div>
     </div>
+    <button type="button" class="link-btn" style="margin-top:8px; display:block;" onclick="toggleObjetoInternoEdicaoRecebimento()">Não tem código de barra? Gerar objeto interno</button>
+    <div id="modal-edit-bloco-objeto-interno" style="display:none; margin-top:10px; padding-top:10px; border-top:1px dashed var(--cinza-borda);">
+      <label for="modal-edit-sigla-interno">Sigla do cliente</label>
+      <input type="text" id="modal-edit-sigla-interno" placeholder="Ex: PMPE" autocomplete="off" style="text-transform:uppercase;">
+      <div class="grid grid-2" style="margin-top:8px;">
+        <div class="field">
+          <label for="modal-edit-sigla-interno-inicio">Nº inicial (opcional — p/ gerar vários)</label>
+          <input type="text" id="modal-edit-sigla-interno-inicio" placeholder="Ex: 1" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="modal-edit-sigla-interno-fim">Nº final (opcional — p/ gerar vários)</label>
+          <input type="text" id="modal-edit-sigla-interno-fim" placeholder="Ex: 8" autocomplete="off">
+        </div>
+      </div>
+      <div class="grid grid-2" style="margin-top:8px;">
+        <div class="field">
+          <label for="modal-edit-sigla-interno-refcli-inicio">Nº caixa do cliente inicial (opcional)</label>
+          <input type="text" id="modal-edit-sigla-interno-refcli-inicio" placeholder="Ex: 900 ou diversos 1" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="modal-edit-sigla-interno-refcli-fim">Nº caixa do cliente final (opcional)</label>
+          <input type="text" id="modal-edit-sigla-interno-refcli-fim" placeholder="Ex: 903 ou diversos 8" autocomplete="off">
+        </div>
+      </div>
+      <div class="hint" style="margin-top:4px;">Deixe os dois em branco para gerar só o próximo número da sequência. Preencha nº inicial/final para gerar vários de uma vez (ex: de 1 a 8 gera PMPE000001 até PMPE000008). Se também preencher a faixa de nº da caixa do cliente, cada objeto interno gerado é vinculado, na ordem, a um nº — precisa ter a mesma quantidade de itens do intervalo. O tipo usado é o selecionado em "Tipo" acima. As etiquetas podem ser impressas ao salvar.</div>
+      <button type="button" class="btn secondary block" style="margin-top:8px;" onclick="gerarObjetoInternoEdicaoRecebimento()">Gerar e adicionar objeto interno</button>
+    </div>
     <div class="field" style="margin-top:8px; max-width:520px;">
       <label style="display:flex; align-items:center; gap:8px; font-weight:400; cursor:pointer;">
         <input type="checkbox" id="modal-edit-mesma-caixa" style="width:auto;">
@@ -4482,22 +4510,23 @@ function renderTabelaEdicaoRecebimento(){
     </tr>`;
   }).join('');
 }
-function adicionarObjetoEdicaoRecebimento(){
+function adicionarObjetoEdicaoRecebimento(objetoInterno){
   const input = document.getElementById('modal-edit-novo-objeto');
   const tipoSel = document.getElementById('modal-edit-novo-objeto-tipo');
   const chkMesmaCaixa = document.getElementById('modal-edit-mesma-caixa');
   const refInput = document.getElementById('modal-edit-novo-objeto-ref');
   const refCliente = refInput ? refInput.value.trim() : '';
-  const bruto = input.value.trim();
-  if(!bruto) return;
-  const objeto = extrairObjeto(bruto);
+  const usandoObjetoInterno = typeof objetoInterno === 'string' && objetoInterno;
+  const bruto = usandoObjetoInterno ? objetoInterno : input.value.trim();
+  if(!bruto) return false;
+  const objeto = usandoObjetoInterno ? bruto : extrairObjeto(bruto);
   if(!objeto){
     mostrarStatus('Não consegui ler o número do objeto.', 'error', 'modal-edit-status-msg');
-    return;
+    return false;
   }
   if(itensEdicaoRecebimento.some(it => it.objeto === objeto)){
     mostrarStatus('Esse objeto já está na lista.', 'warn', 'modal-edit-status-msg');
-    return;
+    return false;
   }
   const ultimo = itensEdicaoRecebimento[itensEdicaoRecebimento.length - 1];
   let tipo, caixaId;
@@ -4507,19 +4536,148 @@ function adicionarObjetoEdicaoRecebimento(){
   }else{
     if(!tipoSel.value){
       mostrarStatus('Cadastre um tipo de caixa antes de adicionar objetos.', 'warn', 'modal-edit-status-msg');
-      return;
+      return false;
     }
     tipo = tipoSel.value;
     caixaId = objeto;
   }
   itensEdicaoRecebimento.push({ objeto, tipo, caixaId, refCliente });
-  input.value = '';
+  if(!usandoObjetoInterno) input.value = '';
   if(refInput) refInput.value = '';
   if(chkMesmaCaixa && chkMesmaCaixa.checked){
     chkMesmaCaixa.checked = false;
   }
   renderTabelaEdicaoRecebimento();
-  input.focus();
+  if(!usandoObjetoInterno) input.focus();
+  return true;
+}
+function toggleObjetoInternoEdicaoRecebimento(){
+  const bloco = document.getElementById('modal-edit-bloco-objeto-interno');
+  if(!bloco) return;
+  bloco.style.display = (bloco.style.display === 'none') ? '' : 'none';
+  if(bloco.style.display !== 'none') document.getElementById('modal-edit-sigla-interno').focus();
+}
+async function gerarObjetoInternoEdicaoRecebimento(){
+  const MSG = 'modal-edit-status-msg';
+  const siglaInput = document.getElementById('modal-edit-sigla-interno');
+  const inicioInput = document.getElementById('modal-edit-sigla-interno-inicio');
+  const fimInput = document.getElementById('modal-edit-sigla-interno-fim');
+  const refIniInput = document.getElementById('modal-edit-sigla-interno-refcli-inicio');
+  const refFimInput = document.getElementById('modal-edit-sigla-interno-refcli-fim');
+  const tipoSel = document.getElementById('modal-edit-novo-objeto-tipo');
+  const sigla = siglaInput.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if(!sigla){
+    mostrarStatus('Digite a sigla do cliente antes de gerar o objeto interno.', 'warn', MSG);
+    siglaInput.focus();
+    return;
+  }
+  if(!window.__etiquetasPendentesEdicao) window.__etiquetasPendentesEdicao = [];
+  const bruteIni = inicioInput.value.trim();
+  const bruteFim = fimInput.value.trim();
+
+  if(!bruteIni && !bruteFim){
+    // sem intervalo: gera só o próximo número da sequência dessa sigla
+    await carregarContadoresObjetoInterno();
+    let proximo = (contadoresObjetoInterno[sigla] || 0) + 1;
+    let codigo = sigla + String(proximo).padStart(6, '0');
+    while(itensEdicaoRecebimento.some(it => it.objeto === codigo)){
+      proximo++;
+      codigo = sigla + String(proximo).padStart(6, '0');
+    }
+    const ok = adicionarObjetoEdicaoRecebimento(codigo);
+    if(ok === true){
+      contadoresObjetoInterno[sigla] = proximo;
+      await salvarContadoresObjetoInterno();
+      window.__etiquetasPendentesEdicao.push(codigo);
+      siglaInput.value = '';
+      mostrarStatus('Objeto interno ' + codigo + ' adicionado.', 'ok', MSG);
+    }
+    return;
+  }
+
+  // intervalo: gera vários de uma vez
+  if(!tipoSel || !tipoSel.value){
+    mostrarStatus('Cadastre/selecione um tipo de caixa antes de gerar objetos internos.', 'warn', MSG);
+    return;
+  }
+  if(!bruteIni || !bruteFim){
+    mostrarStatus('Informe o nº inicial e o nº final, ou deixe os dois em branco para gerar só o próximo da sequência.', 'warn', MSG);
+    return;
+  }
+  const numIni = parseInt(bruteIni, 10);
+  const numFim = parseInt(bruteFim, 10);
+  if(isNaN(numIni) || isNaN(numFim) || numFim < numIni){
+    mostrarStatus('Intervalo inválido — o nº final deve ser maior ou igual ao inicial.', 'error', MSG);
+    return;
+  }
+  const total = numFim - numIni + 1;
+  if(total > 500){
+    mostrarStatus('Intervalo muito grande (máximo de 500 objetos internos por vez).', 'error', MSG);
+    return;
+  }
+
+  const refIniRaw = refIniInput.value.trim();
+  const refFimRaw = refFimInput.value.trim();
+  let usarRefCliente = false;
+  let refNumIni = 0, refLargura = 0, refCrescente = true, refPrefixo = '', refSufixo = '';
+  if(refIniRaw || refFimRaw){
+    if(!refIniRaw || !refFimRaw){
+      mostrarStatus('Informe o nº da caixa do cliente inicial e final, ou deixe os dois em branco.', 'warn', MSG);
+      return;
+    }
+    const refIni = parseRefClienteFaixa(refIniRaw);
+    const refFim = parseRefClienteFaixa(refFimRaw);
+    if(!refIni || !refFim){
+      mostrarStatus('Não consegui ler os números da caixa do cliente.', 'error', MSG);
+      return;
+    }
+    if(refIni.prefixo !== refFim.prefixo || refIni.sufixo !== refFim.sufixo){
+      mostrarStatus('O texto antes/depois do número precisa ser igual no inicial e no final (ex: "diversos 1" e "diversos 8").', 'error', MSG);
+      return;
+    }
+    const totalRef = Math.abs(refFim.numero - refIni.numero) + 1;
+    if(totalRef !== total){
+      mostrarStatus('A faixa de nº da caixa do cliente tem ' + totalRef + ' item(ns), mas o intervalo de objetos internos tem ' + total + '. As duas quantidades precisam ser iguais para vincular.', 'error', MSG);
+      return;
+    }
+    refNumIni = refIni.numero;
+    const refComZero = refIni.numeroTxt.startsWith('0') || refFim.numeroTxt.startsWith('0');
+    refLargura = refComZero ? Math.max(refIni.largura, refFim.largura) : 0;
+    refCrescente = refFim.numero >= refIni.numero;
+    refPrefixo = refIni.prefixo;
+    refSufixo = refIni.sufixo;
+    usarRefCliente = true;
+  }
+
+  const tipo = tipoSel.value;
+  await carregarContadoresObjetoInterno();
+  let adicionados = 0, duplicados = 0;
+  let maior = contadoresObjetoInterno[sigla] || 0;
+  for(let n = numIni; n <= numFim; n++){
+    const passo = n - numIni;
+    const codigo = sigla + String(n).padStart(6, '0');
+    if(itensEdicaoRecebimento.some(it => it.objeto === codigo)){ duplicados++; continue; }
+    let refCliente = '';
+    if(usarRefCliente){
+      const refNum = refCrescente ? (refNumIni + passo) : (refNumIni - passo);
+      refCliente = refPrefixo + String(refNum).padStart(refLargura, '0') + refSufixo;
+    }
+    itensEdicaoRecebimento.push({ objeto: codigo, tipo, caixaId: codigo, refCliente });
+    window.__etiquetasPendentesEdicao.push(codigo);
+    adicionados++;
+    if(n > maior) maior = n;
+  }
+  contadoresObjetoInterno[sigla] = maior;
+  await salvarContadoresObjetoInterno();
+  siglaInput.value = '';
+  inicioInput.value = '';
+  fimInput.value = '';
+  refIniInput.value = '';
+  refFimInput.value = '';
+  renderTabelaEdicaoRecebimento();
+  let msg = adicionados + ' objeto(s) interno(s) adicionado(s) — ' + sigla + String(numIni).padStart(6,'0') + ' a ' + sigla + String(numFim).padStart(6,'0') + ' (' + tipo + ')' + (usarRefCliente ? ', vinculados ao nº da caixa do cliente' : '') + '.';
+  if(duplicados > 0) msg += ' ' + duplicados + ' já estavam na lista e foram ignorados.';
+  mostrarStatus(msg, duplicados > 0 ? 'warn' : 'ok', MSG);
 }
 function removerObjetoEdicaoRecebimento(idx){
   itensEdicaoRecebimento.splice(idx, 1);
@@ -4614,9 +4772,16 @@ async function salvarEdicaoRecebimento(){
   });
   await salvarObjetosRecebidos();
 
+  const codigosPendentes = new Set(window.__etiquetasPendentesEdicao || []);
+  const etiquetasNovas = itensEdicaoRecebimento
+    .filter(it => codigosPendentes.has(it.objeto))
+    .map(it => ({ cliente, setor, objeto: it.objeto, refCliente: it.refCliente || '' }));
+  window.__etiquetasPendentesEdicao = [];
+
   fecharModal();
   renderRecebimentos();
   mostrarStatus('Recebimento atualizado — ' + total + ' caixa(s).', 'ok', 'receb-status');
+  if(etiquetasNovas.length > 0) abrirModalEtiquetas(etiquetasNovas);
 }
 
 function imprimirObjetosRecebimento(id){
