@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>Gerador de GRD — CEPE doc</title>
 <!-- ===== PWA: ícone/logo ao instalar o app ===== -->
 <link rel="manifest" href="manifest.json">
@@ -308,6 +311,7 @@
   .sheet-meta{ font-size: 12.5px; margin-bottom: 4px; }
   .sheet-meta-row{ display:flex; justify-content:space-between; gap: 20px; margin-bottom: 3px; }
   .sheet-meta-row span.lbl{ font-weight:700; }
+  .tipo-grd-destaque{ font-weight:800; }
   .instrucoes-caixas-destaque{ font-weight:800; color:#C1121C; }
   .instrucoes-caixas-destaque span.lbl{ color:#C1121C; }
   .observacao-destaque{ font-weight:800; color:#C1121C; }
@@ -615,7 +619,13 @@
         <label for="f-nome-remetente">Nome (remetente)</label>
         <input type="text" id="f-nome-remetente" placeholder="Nome de quem envia">
       </div>
-      <div class="field"></div>
+      <div class="field">
+        <label for="f-tipo-grd" style="display:flex; justify-content:space-between; align-items:center;">
+          <span>Tipo da GRD</span>
+          <button type="button" class="link-btn" style="text-transform:none;" onclick="abrirModalTiposGrd()">Gerenciar</button>
+        </label>
+        <select id="f-tipo-grd"></select>
+      </div>
     </div>
     <div class="grid grid-4">
       <div class="field">
@@ -1008,6 +1018,9 @@
         <div><span class="lbl">ÁREA DESTINATÁRIO:</span> <span id="p-area-destinatario"></span></div>
         <div><span class="lbl">NOME:</span> <span id="p-nome-destinatario"></span> &nbsp; <span class="lbl">ASS:</span> ________________</div>
       </div>
+      <div class="sheet-meta-row" id="p-tipo-grd-row" style="display:none;">
+        <div class="tipo-grd-destaque"><span class="lbl">TIPO DA GRD:</span> <span id="p-tipo-grd"></span></div>
+      </div>
       <div class="sheet-meta-row" id="p-instrucoes-caixas-row">
         <div class="instrucoes-caixas-destaque"><span class="lbl">INSTRUÇÕES DAS CAIXAS:</span> <span id="p-instrucoes-caixas"></span></div>
       </div>
@@ -1086,6 +1099,7 @@ let grdAtualId = null;
 let cadastro = {};
 let historico = [];
 let instrucoesCaixas = [];
+let tiposGrd = [];
 let recebimentos = [];
 let itensRecebimentoAtual = [];
 let edicaoRecebimentoId = null;
@@ -1096,6 +1110,70 @@ let dividirCaixaTipoAtual = '';
 let objetosRecebidos = {};
 let contadoresObjetoInterno = {};
 let statusCaixa = ['Recebida', 'Recebida com avaria', 'Pendente de conferência', 'Conferida', 'Não está mais conosco — no CGGD', 'Não está mais conosco — com o cliente'];
+
+/* ================= AUTO-ATUALIZAÇÃO (nova versão do site) ================= */
+// Sempre que você subir uma nova versão do index.html, quem estiver com o site
+// aberto recebe a versão nova sozinho (checa a cada 1 min e ao voltar pra aba).
+// Quem estiver com o site fechado já abre direto na versão nova.
+let assinaturaVersaoSite = null;
+let recarregandoSite = false;
+async function lerAssinaturaSite(){
+  const url = location.href.split('#')[0].split('?')[0] + '?_v=' + Date.now();
+  try{
+    const r = await fetch(url, { method: 'HEAD', cache: 'no-store' });
+    if(r.ok){
+      const sig = [r.headers.get('etag'), r.headers.get('last-modified'), r.headers.get('content-length')].filter(Boolean).join('|');
+      if(sig) return 'h:' + sig;
+    }
+  }catch(e){}
+  try{
+    const r = await fetch(url, { cache: 'no-store' });
+    if(!r.ok) return null;
+    const t = await r.text();
+    let h = 5381;
+    for(let i = 0; i < t.length; i++){ h = ((h << 5) + h + t.charCodeAt(i)) | 0; }
+    return 'b:' + t.length + ':' + h;
+  }catch(e){ return null; }
+}
+function haTrabalhoNaoSalvo(){
+  try{
+    return (typeof itensRecebimentoAtual !== 'undefined' && itensRecebimentoAtual.length > 0) ||
+           (typeof itensEdicaoRecebimento !== 'undefined' && itensEdicaoRecebimento.length > 0);
+  }catch(e){ return false; }
+}
+function mostrarAvisoNovaVersao(){
+  if(document.getElementById('aviso-nova-versao')) return;
+  const d = document.createElement('div');
+  d.id = 'aviso-nova-versao';
+  d.style.cssText = 'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:99999;background:#0A4E3A;color:#fff;padding:10px 16px;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.3);font-size:14px;display:flex;gap:12px;align-items:center;';
+  d.innerHTML = '<span>Nova versão do site disponível.</span><button style="background:#fff;color:#0A4E3A;border:0;border-radius:6px;padding:6px 12px;font-weight:700;cursor:pointer;" onclick="location.reload()">Atualizar agora</button>';
+  document.body.appendChild(d);
+}
+async function recarregarParaNovaVersao(){
+  if(recarregandoSite) return;
+  if(haTrabalhoNaoSalvo()){ mostrarAvisoNovaVersao(); return; }
+  recarregandoSite = true;
+  try{ await salvarSessao(); }catch(e){}
+  const u = new URL(location.href);
+  u.searchParams.set('_v', Date.now());
+  location.replace(u.toString());
+}
+async function verificarNovaVersaoSite(){
+  if(recarregandoSite) return;
+  const atual = await lerAssinaturaSite();
+  if(!atual) return;
+  if(assinaturaVersaoSite === null){ assinaturaVersaoSite = atual; return; }
+  if(atual !== assinaturaVersaoSite) recarregarParaNovaVersao();
+}
+function iniciarAutoAtualizacaoSite(){
+  if(location.protocol === 'file:') return;
+  verificarNovaVersaoSite();
+  setInterval(verificarNovaVersaoSite, 60000);
+  document.addEventListener('visibilitychange', () => { if(!document.hidden) verificarNovaVersaoSite(); });
+  window.addEventListener('focus', verificarNovaVersaoSite);
+  window.addEventListener('online', verificarNovaVersaoSite);
+  window.addEventListener('pageshow', e => { if(e.persisted) location.reload(); });
+}
 
 /* ================= INIT ================= */
 async function init(){
@@ -1113,6 +1191,7 @@ async function init(){
   document.getElementById('f-cliente').addEventListener('change', async () => { renderSetorSelect(); await salvarSessao(); });
   document.getElementById('f-setor').addEventListener('change', onSetorSelectChange);
   document.getElementById('f-instrucoes-caixas').addEventListener('change', onInstrucoesCaixasChange);
+  document.getElementById('f-tipo-grd').addEventListener('change', onTipoGrdChange);
   ['f-data','f-area-remetente','f-nome-remetente','f-area-destinatario','f-nome-destinatario','f-observacao']
     .forEach(id => document.getElementById(id).addEventListener('input', salvarSessao));
 
@@ -1120,6 +1199,7 @@ async function init(){
   await carregarContadoresObjetoInterno();
   await carregarTiposCaixa();
   await carregarInstrucoesCaixas();
+  await carregarTiposGrd();
   await carregarHistorico();
   await carregarRecebimentos();
   await carregarObjetosRecebidos();
@@ -1127,6 +1207,7 @@ async function init(){
   renderToggleCaixa();
   renderClienteSelect();
   renderSelectInstrucoesCaixas();
+  renderSelectTiposGrd();
 
   document.getElementById('f-receb-data').value = hoje();
   document.getElementById('f-receb-hora').value = horaAgora();
@@ -1161,6 +1242,19 @@ async function init(){
       if(opcaoNovo) selSetor.insertBefore(opt, opcaoNovo); else selSetor.appendChild(opt);
     }
     selSetor.value = sessaoCarregada.setor;
+  }
+  renderSelectTiposGrd();
+  if(sessaoCarregada && sessaoCarregada.tipoGrd){
+    const selTipo = document.getElementById('f-tipo-grd');
+    const existeTipo = Array.from(selTipo.options).some(o => o.value === sessaoCarregada.tipoGrd);
+    if(!existeTipo){
+      const opt = document.createElement('option');
+      opt.value = sessaoCarregada.tipoGrd;
+      opt.textContent = sessaoCarregada.tipoGrd;
+      const opcaoNovo = selTipo.querySelector('option[value="__novo"]');
+      if(opcaoNovo) selTipo.insertBefore(opt, opcaoNovo); else selTipo.appendChild(opt);
+    }
+    selTipo.value = sessaoCarregada.tipoGrd;
   }
   if(sessaoCarregada && sessaoCarregada.instrucoesCaixas){
     const selInstr = document.getElementById('f-instrucoes-caixas');
@@ -1946,6 +2040,103 @@ async function abrirModalInstrucoesCaixas(){
   `;
   abrirModal(html);
   setTimeout(() => { const el = document.getElementById('modal-nova-instrucao-caixa'); if(el) el.focus(); }, 50);
+}
+
+/* ================= TIPO DA GRD (CADASTRO) ================= */
+async function carregarTiposGrd(){
+  const raw = await storageGet('tiposGrd', true);
+  if(raw){
+    try{
+      const lista = JSON.parse(raw);
+      if(Array.isArray(lista) && lista.length){ tiposGrd = lista; return; }
+    }catch(e){}
+  }
+  tiposGrd = ['DEVOLUÇÃO', 'COLETA'];
+  await salvarTiposGrd();
+}
+async function salvarTiposGrd(){ await storageSet('tiposGrd', JSON.stringify(tiposGrd), true); }
+
+function renderSelectTiposGrd(){
+  const sel = document.getElementById('f-tipo-grd');
+  if(!sel) return;
+  const atual = sel.value;
+  sel.innerHTML = '<option value="">Selecione...</option>' +
+    tiposGrd.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('') +
+    '<option value="__novo">+ Cadastrar novo tipo...</option>';
+  if(atual && tiposGrd.includes(atual)) sel.value = atual;
+}
+async function onTipoGrdChange(){
+  const sel = document.getElementById('f-tipo-grd');
+  if(sel.value === '__novo'){
+    sel.value = '';
+    abrirModalNovoTipoGrd();
+    return;
+  }
+  await salvarSessao();
+}
+function abrirModalNovoTipoGrd(){
+  const html = `
+    <h3>Cadastrar novo tipo de GRD</h3>
+    <div class="add-inline">
+      <input type="text" id="modal-novo-tipo-grd-atual" placeholder="Ex: ENTREGA">
+      <button class="btn" onclick="
+        (async function(){
+          const inp = document.getElementById('modal-novo-tipo-grd-atual');
+          if(await adicionarTipoGrd(inp.value)){
+            document.getElementById('f-tipo-grd').value = inp.value.trim().toUpperCase();
+            fecharModal();
+            await salvarSessao();
+          }
+        })();
+      ">Adicionar</button>
+    </div>
+    <div class="modal-close"><button class="btn ghost" onclick="fecharModal()">Cancelar</button></div>
+  `;
+  abrirModal(html);
+  setTimeout(() => { const el = document.getElementById('modal-novo-tipo-grd-atual'); if(el) el.focus(); }, 50);
+}
+async function adicionarTipoGrd(nome){
+  nome = (nome || '').trim().toUpperCase();
+  if(!nome) return false;
+  if(!tiposGrd.includes(nome)){
+    tiposGrd.push(nome);
+    await salvarTiposGrd();
+  }
+  renderSelectTiposGrd();
+  return true;
+}
+async function removerTipoGrdCadastro(nome){
+  if(!confirm(`Remover o tipo "${nome}"?`)) return;
+  tiposGrd = tiposGrd.filter(t => t !== nome);
+  await salvarTiposGrd();
+  renderSelectTiposGrd();
+  abrirModalTiposGrd();
+}
+async function abrirModalTiposGrd(){
+  await carregarTiposGrd();
+  renderSelectTiposGrd();
+  const listaHtml = tiposGrd.map(t => {
+    const escapadoJs = escapeHtml(t).replace(/'/g,"\\'");
+    return `<span class="chip">${escapeHtml(t)} <button onclick="removerTipoGrdCadastro('${escapadoJs}')">×</button></span>`;
+  }).join('') || '<span class="hint">Nenhum tipo cadastrado ainda.</span>';
+
+  const html = `
+    <h3>Tipos de GRD cadastrados</h3>
+    <label for="modal-novo-tipo-grd">Cadastrar novo tipo</label>
+    <div class="add-inline">
+      <input type="text" id="modal-novo-tipo-grd" placeholder="Ex: ENTREGA">
+      <button class="btn" onclick="
+        (async function(){
+          const inp = document.getElementById('modal-novo-tipo-grd');
+          if(await adicionarTipoGrd(inp.value)){ abrirModalTiposGrd(); }
+        })();
+      ">Adicionar</button>
+    </div>
+    <div class="cadastro-setores" style="margin-top:10px;">${listaHtml}</div>
+    <div class="modal-close"><button class="btn ghost" onclick="fecharModal()">Fechar</button></div>
+  `;
+  abrirModal(html);
+  setTimeout(() => { const el = document.getElementById('modal-novo-tipo-grd'); if(el) el.focus(); }, 50);
 }
 
 /* ================= CAIXA / BIPAGEM ================= */
@@ -3150,6 +3341,7 @@ async function novaGRD(){
   document.getElementById('f-nome-remetente').value = '';
   document.getElementById('f-area-destinatario').value = '';
   document.getElementById('f-nome-destinatario').value = '';
+  document.getElementById('f-tipo-grd').value = '';
   document.getElementById('f-instrucoes-caixas').value = '';
   document.getElementById('f-observacao').value = '';
   document.getElementById('f-cliente').value = '';
@@ -3173,6 +3365,7 @@ function dadosGrdAtual(){
     nomeRemetente: document.getElementById('f-nome-remetente').value,
     areaDestinatario: document.getElementById('f-area-destinatario').value,
     nomeDestinatario: document.getElementById('f-nome-destinatario').value,
+    tipoGrd: document.getElementById('f-tipo-grd').value,
     instrucoesCaixas: document.getElementById('f-instrucoes-caixas').value,
     observacao: document.getElementById('f-observacao').value,
     itens: JSON.parse(JSON.stringify(itens))
@@ -3207,6 +3400,8 @@ function montarFolhaImpressao(dados, incluirRefCliente, incluirObservacao){
   document.getElementById('p-nome-remetente').textContent = dados.nomeRemetente || '';
   document.getElementById('p-area-destinatario').textContent = dados.areaDestinatario || '';
   document.getElementById('p-nome-destinatario').textContent = dados.nomeDestinatario || '';
+  document.getElementById('p-tipo-grd').textContent = dados.tipoGrd || '';
+  document.getElementById('p-tipo-grd-row').style.display = dados.tipoGrd ? '' : 'none';
   document.getElementById('p-instrucoes-caixas').textContent = dados.instrucoesCaixas || '';
   document.getElementById('p-instrucoes-caixas-row').style.display = dados.instrucoesCaixas ? '' : 'none';
   document.getElementById('p-observacao').textContent = dados.observacao || '';
@@ -3329,6 +3524,12 @@ function gerarPDF(dados, incluirRefCliente, incluirObservacao){
       doc.text(dados.areaDestinatario || '', margin + 37, y);
       doc.setFont('helvetica','bold'); doc.text('NOME:', 120, y); doc.setFont('helvetica','normal');
       doc.text((dados.nomeDestinatario || '') + '   ASS: ____________', 132, y);
+      if(dados.tipoGrd){
+        y += 5;
+        doc.setFont('helvetica', 'bold'); doc.setTextColor(20, 20, 20);
+        doc.text('TIPO DA GRD: ' + dados.tipoGrd, margin, y);
+        doc.setFont('helvetica', 'normal');
+      }
       if(dados.instrucoesCaixas){
         y += 5;
         doc.setFont('helvetica', 'bold'); doc.setTextColor(193, 18, 28);
@@ -3712,6 +3913,9 @@ async function editarHistoricoItem(id){
   document.getElementById('f-nome-remetente').value = dados.nomeRemetente || '';
   document.getElementById('f-area-destinatario').value = dados.areaDestinatario || '';
   document.getElementById('f-nome-destinatario').value = dados.nomeDestinatario || '';
+  renderSelectTiposGrd();
+  if(dados.tipoGrd && !tiposGrd.includes(dados.tipoGrd)){ tiposGrd.push(dados.tipoGrd); await salvarTiposGrd(); renderSelectTiposGrd(); }
+  document.getElementById('f-tipo-grd').value = dados.tipoGrd || '';
   document.getElementById('f-instrucoes-caixas').value = dados.instrucoesCaixas || '';
   document.getElementById('f-observacao').value = dados.observacao || '';
   itens = JSON.parse(JSON.stringify(dados.itens || []));
@@ -5277,6 +5481,7 @@ async function salvarSessao(){
     nomeDestinatario: document.getElementById('f-nome-destinatario').value,
     cliente: document.getElementById('f-cliente').value,
     setor: document.getElementById('f-setor').value,
+    tipoGrd: document.getElementById('f-tipo-grd').value,
     instrucoesCaixas: document.getElementById('f-instrucoes-caixas').value,
     observacao: document.getElementById('f-observacao').value,
     itens: itens
@@ -5301,6 +5506,7 @@ async function carregarSessao(){
   }catch(e){ return null; }
 }
 
+iniciarAutoAtualizacaoSite();
 init();
 </script>
 
