@@ -587,7 +587,6 @@
             <th style="width:15%;">Entregue por</th>
             <th style="width:13%;">Recebido por</th>
             <th style="width:14%;">Caixas</th>
-            <th style="width:10%;">Status</th>
             <th style="width:9%;">Avarias</th>
             <th style="width:13%;">Caixas trocadas</th>
             <th style="width:9%;"></th>
@@ -5213,8 +5212,6 @@ function renderRecebimentos(){
       : '<span class="hint" style="margin:0;">—</span>';
     const avariasTxt = r.caixasAvariadas ? `${r.caixasAvariadas}${r.tipoCaixaAvariada ? ' (' + escapeHtml(r.tipoCaixaAvariada) + ')' : ''}` : '<span class="hint" style="margin:0;">—</span>';
     const trocasTxt = r.caixasTrocadas ? `${r.caixasTrocadas}${r.tipoCaixaTrocada ? ' (' + escapeHtml(r.tipoCaixaTrocada) + ')' : ''}` : '<span class="hint" style="margin:0;">—</span>';
-    const statusOptionsInline = statusCaixa.map(s => `<option value="${escapeHtml(s)}" ${s === r.status ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('')
-      || `<option value="${escapeHtml(r.status || '')}" selected>${escapeHtml(r.status || '')}</option>`;
     return `
       <tr>
         <td>${formatarDataBR(r.data)}${r.hora ? ' ' + escapeHtml(r.hora) : ''}</td>
@@ -5223,7 +5220,6 @@ function renderRecebimentos(){
         <td>${entregadorTxt}</td>
         <td>${r.recebidoPor ? escapeHtml(r.recebidoPor) : '<span class="hint" style="margin:0;">—</span>'}</td>
         <td>${caixasTxt}</td>
-        <td><select class="row-edit" onchange="alterarStatusRecebimentoInline('${r.id}', this.value)">${statusOptionsInline}</select></td>
         <td>${avariasTxt}</td>
         <td>${trocasTxt}</td>
         <td class="actions-cell">
@@ -5374,27 +5370,6 @@ function imprimirEtiquetasInternasRecebimento(id){
     return;
   }
   abrirModalEtiquetas(lista);
-}
-async function alterarStatusRecebimentoInline(id, novoStatus){
-  await carregarRecebimentos();
-  const idx = recebimentos.findIndex(r => r.id === id);
-  if(idx === -1){
-    mostrarStatus('Esse recebimento não existe mais.', 'error', 'receb-status');
-    renderRecebimentos();
-    return;
-  }
-  recebimentos[idx].status = novoStatus;
-  recebimentos[idx].editadoEm = Date.now();
-  await salvarRecebimentos();
-
-  await carregarObjetosRecebidos();
-  (recebimentos[idx].objetos || []).forEach(it => {
-    if(objetosRecebidos[it.objeto]) objetosRecebidos[it.objeto].status = novoStatus;
-  });
-  await salvarObjetosRecebidos();
-
-  mostrarStatus('Status atualizado para "' + novoStatus + '".', 'ok', 'receb-status');
-  renderRecebimentos();
 }
 
 /* ================= EXPORTAÇÕES CSV ================= */
