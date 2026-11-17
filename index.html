@@ -850,6 +850,7 @@
             <option value="cliente">Cliente</option>
             <option value="setor">Setor</option>
             <option value="instrucao" id="rel-detalhar-opt-instrucao">Instrução das caixas</option>
+            <option value="objeto">Objeto</option>
           </select>
         </div>
       </div>
@@ -2514,7 +2515,7 @@ function labelPeriodoFiltro(){
 }
 function relFonteEhGrd(){ return document.getElementById('rel-fonte').value !== 'recebimento'; }
 function labelColunaDetalhe(detalhar){
-  return detalhar === 'cliente' ? 'Cliente' : detalhar === 'setor' ? 'Setor' : 'Instrução das caixas';
+  return detalhar === 'cliente' ? 'Cliente' : detalhar === 'setor' ? 'Setor' : detalhar === 'objeto' ? 'Objeto' : 'Instrução das caixas';
 }
 function renderFiltroInstrucaoOptions(){
   const ehGrd = relFonteEhGrd();
@@ -2591,7 +2592,7 @@ function flattenHistorico(){
   const linhas = [];
   historico.forEach(g => {
     (g.itens || []).forEach(it => {
-      linhas.push({ data: g.data, cliente: it.cliente, setor: it.setor, caixa: it.caixa, instrucao: (g.instrucoesCaixas || '').trim() });
+      linhas.push({ data: g.data, cliente: it.cliente, setor: it.setor, caixa: it.caixa, objeto: (it.objeto || '').toString().trim(), instrucao: (g.instrucoesCaixas || '').trim() });
     });
   });
   return linhas;
@@ -2601,17 +2602,20 @@ function flattenRecebimentos(){
   const linhas = [];
   recebimentos.forEach(r => {
     if(r.objetos && r.objetos.length){
-      const caixasVistas = new Set();
+      // uma linha por caixa (mantém a contagem atual); os objetos da caixa vão juntos no campo "objeto"
+      const caixas = new Map();
       r.objetos.forEach(o => {
         const chave = o.caixaId || o.objeto;
-        if(caixasVistas.has(chave)) return;
-        caixasVistas.add(chave);
-        linhas.push({ data: r.data, cliente: r.cliente, setor: r.setor, caixa: o.tipo });
+        if(!caixas.has(chave)) caixas.set(chave, { tipo: o.tipo, objetos: [] });
+        if(o.objeto) caixas.get(chave).objetos.push(String(o.objeto).trim());
+      });
+      caixas.forEach(c => {
+        linhas.push({ data: r.data, cliente: r.cliente, setor: r.setor, caixa: c.tipo, objeto: c.objetos.join(', ') });
       });
     } else {
       (r.tipos || []).forEach(t => {
         for(let i = 0; i < (t.quantidade || 0); i++){
-          linhas.push({ data: r.data, cliente: r.cliente, setor: r.setor, caixa: t.tipo });
+          linhas.push({ data: r.data, cliente: r.cliente, setor: r.setor, caixa: t.tipo, objeto: '' });
         }
       });
     }
@@ -2626,6 +2630,7 @@ function dadosRelatorioBrutos(){
 
 function agruparTrocasRelatorio(tipoPeriodo, detalhar){
   if(document.getElementById('rel-fonte').value !== 'recebimento') return {};
+  if(detalhar === 'objeto') return {};
   const clienteFiltro = document.getElementById('rel-filtro-cliente').value;
   const setorFiltro = document.getElementById('rel-filtro-setor').value;
   const mesFiltro = relMesFiltro();
@@ -2756,7 +2761,7 @@ function agruparRelatorio(tipoPeriodo, detalhar){
   const grupos = {};
   linhas.forEach(l => {
     const { chave: chavePeriodo, label: periodo } = periodoDe(l.data, tipoPeriodo);
-    const chaveDetalhe = detalhar === 'cliente' ? (l.cliente || '(sem cliente)') : detalhar === 'setor' ? (l.setor || '(sem setor)') : detalhar === 'instrucao' ? (l.instrucao || '(sem instrução)') : '';
+    const chaveDetalhe = detalhar === 'cliente' ? (l.cliente || '(sem cliente)') : detalhar === 'setor' ? (l.setor || '(sem setor)') : detalhar === 'instrucao' ? (l.instrucao || '(sem instrução)') : detalhar === 'objeto' ? (l.objeto || '(sem objeto)') : '';
     const chave = chavePeriodo + '||' + chaveDetalhe;
     if(!grupos[chave]) grupos[chave] = { chavePeriodo, periodo, detalhe: chaveDetalhe, porTipo: {}, total: 0 };
     const tipo = l.caixa || '(sem tipo)';
@@ -2776,7 +2781,7 @@ function agruparRelatorio(tipoPeriodo, detalhar){
   });
   return Object.values(grupos).sort((a,b) => {
     if(a.chavePeriodo !== b.chavePeriodo) return a.chavePeriodo < b.chavePeriodo ? 1 : -1;
-    return a.detalhe.localeCompare(b.detalhe);
+    return a.detalhe.localeCompare(b.detalhe, undefined, { numeric: true });
   });
 }
 function tiposColunasRelatorio(linhasAgrupadas){
