@@ -1081,7 +1081,22 @@ async function esperarFirebase(){
   }catch(e){ firebaseDisponivel = false; }
 }
 
+/* Se o Firebase demorou mais de 4 s para carregar (internet lenta), o app NÃO pode desistir dele
+   pelo resto da sessão: ao ler/gravar dados compartilhados, esperamos ele de novo (até 15 s). */
+let ultimoErroSync = null;
+async function garantirFirebase(){
+  if(firebaseDisponivel) return true;
+  try{
+    firebaseDisponivel = !!(await Promise.race([
+      window.__firebaseReadyPromise,
+      new Promise(res => setTimeout(() => res(false), 15000))
+    ]));
+  }catch(e){ firebaseDisponivel = false; }
+  return firebaseDisponivel;
+}
+
 async function storageGet(key, shared){
+  if(shared) await garantirFirebase();
   if(shared && firebaseDisponivel){
     try{
       const val = await window.__firestoreGet(key);
@@ -1098,11 +1113,21 @@ async function storageGet(key, shared){
 }
 async function storageSet(key, value, shared){
   let ok = false;
-  if(shared && firebaseDisponivel){
-    try{ await window.__firestoreSet(key, value); ok = true; }catch(e){ console.warn('Firestore set falhou:', e); }
+  if(shared){
+    ultimoErroSync = null;
+    await garantirFirebase();
+    if(firebaseDisponivel){
+      try{ await window.__firestoreSet(key, value); ok = true; }
+      catch(e){
+        console.error('Firestore set falhou:', key, e);
+        ultimoErroSync = (e && (e.code || e.message)) || 'erro desconhecido';
+      }
+    }else{
+      ultimoErroSync = 'o Firebase não carregou neste aparelho';
+    }
   }
   if(TEM_STORAGE_REMOTA){
-    try{ await window.storage.set(key, value, shared); ok = true; }catch(e){}
+    try{ await window.storage.set(key, value, shared); ok = true; if(shared) ultimoErroSync = null; }catch(e){}
   }
   try{ localStorage.setItem((shared ? 'shared_' : 'local_') + key, value); ok = true; }catch(e){}
   return ok;
@@ -4505,7 +4530,15 @@ async function carregarObjetosRecebidos(){
   }
   objetosRecebidos = {};
 }
-async function salvarObjetosRecebidos(){ await storageSet('objetosRecebidos', JSON.stringify(objetosRecebidos), true); }
+async function salvarObjetosRecebidos(){
+  await storageSet('objetosRecebidos', JSON.stringify(objetosRecebidos), true);
+  if(ultimoErroSync){
+    alert('⚠ ATENÇÃO: o recebimento foi salvo SÓ NESTE APARELHO e NÃO chegou ao app de produção.\n\nMotivo: ' + ultimoErroSync +
+          '\n\nConfira a internet e tente de novo (Editar recebimento → Salvar destinos).');
+    return false;
+  }
+  return true;
+}
 
 /* ---- Limpeza única de objetos órfãos (objetos apagados/excluídos que ficaram presos no mapa usado pela GRD) ---- */
 async function limparObjetosRecebidosOrfaos(){
