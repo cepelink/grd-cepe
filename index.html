@@ -517,10 +517,11 @@
         <thead>
           <tr>
             <th class="center" style="width:6%;">Item</th>
-            <th style="width:40%;">Objeto</th>
-            <th style="width:16%;">Tipo de caixa</th>
-            <th style="width:28%;">Ref. cliente</th>
-            <th class="center" style="width:10%;"></th>
+            <th style="width:28%;">Objeto</th>
+            <th style="width:14%;">Tipo de caixa</th>
+            <th style="width:22%;">Ref. cliente</th>
+            <th style="width:16%;">Destino</th>
+            <th class="center" style="width:14%;"></th>
           </tr>
         </thead>
         <tbody id="tbody-receb-itens"></tbody>
@@ -539,7 +540,15 @@
         <label for="f-receb-status">Status</label>
         <select id="f-receb-status"></select>
       </div>
-      <div class="field"></div>
+      <div class="field">
+        <label for="f-receb-destino">Destino das caixas</label>
+        <select id="f-receb-destino" onchange="renderTabelaRecebimentoItens()">
+          <option value="Produção">Produção</option>
+          <option value="Envio direto">Envio direto</option>
+          <option value="A definir">A definir</option>
+        </select>
+        <div class="hint">Objetos com destino "Produção" vão sozinhos para o app de produção assim que você registrar. Dá para mudar objeto por objeto na tabela acima.</div>
+      </div>
     </div>
     <div class="grid grid-4" style="margin-top:12px;">
       <div class="field">
@@ -566,6 +575,14 @@
       </div>
     </div>
     <div id="receb-status" class="status-msg"></div>
+  </div>
+
+  <div class="card">
+    <details>
+      <summary style="cursor:pointer; font-weight:700;">⚙️ Destino padrão por cliente e setor</summary>
+      <div class="hint">Define a sugestão automática do campo "Destino" ao registrar um recebimento. Você ainda pode mudar na hora, por recebimento ou por objeto.</div>
+      <div id="regras-destino"></div>
+    </details>
   </div>
 
   <div class="card">
@@ -1109,6 +1126,119 @@ let intervaloCaixaTipoAtual = '';
 let dividirCaixaTipoAtual = '';
 let objetosRecebidos = {};
 let contadoresObjetoInterno = {};
+/* ================= DESTINO DAS CAIXAS (Produção x Envio direto) + situação na produção ================= */
+const DESTINOS = ['Produção', 'Envio direto', 'A definir'];
+let destinoRegras = {};      // { cliente: { padrao: 'Produção', setores: { setor: 'Envio direto' } } }
+async function carregarDestinoRegras(){
+  const raw = await storageGet('destino_regras', true);
+  try{ destinoRegras = raw ? JSON.parse(raw) : {}; }catch(e){ destinoRegras = {}; }
+  if(!destinoRegras || typeof destinoRegras !== 'object') destinoRegras = {};
+}
+async function salvarDestinoRegras(){ await storageSet('destino_regras', JSON.stringify(destinoRegras), true); }
+function destinoPadrao(cliente, setor){
+  const r = destinoRegras[cliente] || {};
+  const d = (r.setores && r.setores[setor]) || r.padrao;
+  return DESTINOS.includes(d) ? d : 'A definir';
+}
+function aplicarDestinoPadraoRecebimento(){
+  const sel = document.getElementById('f-receb-destino');
+  if(!sel) return;
+  const cli = (document.getElementById('f-receb-cliente') || {}).value || '';
+  const set = (document.getElementById('f-receb-setor') || {}).value || '';
+  sel.value = destinoPadrao(cli, set);
+  renderTabelaRecebimentoItens();
+}
+function destinoLoteRecebimento(){
+  const sel = document.getElementById('f-receb-destino');
+  return sel && DESTINOS.includes(sel.value) ? sel.value : 'A definir';
+}
+function definirDestinoItemRecebimento(idx, valor){
+  if(itensRecebimentoAtual[idx]) itensRecebimentoAtual[idx].destino = valor;
+}
+function resumoDestinoRecebimento(r){
+  const cont = {'Produção':0, 'Envio direto':0, 'A definir':0};
+  (r.objetos || []).forEach(it => {
+    cont[DESTINOS.includes(it.destino) ? it.destino : 'A definir']++;
+  });
+  return `<br><span class="hint" style="margin:0;">Produção: ${cont['Produção']} · Envio direto: ${cont['Envio direto']} · A definir: ${cont['A definir']}</span>`;
+}
+async function abrirModalDestinoRecebimento(id){
+  await carregarRecebimentos();
+  const r = recebimentos.find(x => x.id === id);
+  if(!r){ mostrarStatus('Esse recebimento não existe mais.', 'error', 'receb-status'); renderRecebimentos(); return; }
+  const linhas = (r.objetos || []).map((it, i) => {
+    const atual = DESTINOS.includes(it.destino) ? it.destino : 'A definir';
+    return `<tr>
+      <td>${escapeHtml(it.objeto)}</td>
+      <td>${escapeHtml(it.tipo || '')}</td>
+      <td><select id="dest-it-${i}">${DESTINOS.map(d => `<option value="${d}" ${d === atual ? 'selected' : ''}>${d}</option>`).join('')}</select></td>
+    </tr>`;
+  }).join('');
+  abrirModal(`
+    <h3>Destino das caixas</h3>
+    <div class="hint">${escapeHtml(r.cliente)} · ${escapeHtml(r.setor)} — escolha quais objetos vão para a produção e quais seguem direto ao cliente. Os de "Produção" chegam sozinhos ao app de produção.</div>
+    <table class="itens" style="margin-top:10px;">
+      <thead><tr><th>Objeto</th><th>Tipo</th><th>Destino</th></tr></thead>
+      <tbody>${linhas}</tbody>
+    </table>
+    <div class="modal-close">
+      <button class="btn ghost" onclick="fecharModal()">Cancelar</button>
+      <button class="btn" onclick="salvarDestinoRecebimento('${r.id}')">Salvar destinos</button>
+    </div>
+  `);
+}
+async function salvarDestinoRecebimento(id){
+  await carregarRecebimentos();
+  const idx = recebimentos.findIndex(x => x.id === id);
+  if(idx === -1){ fecharModal(); return; }
+  recebimentos[idx].objetos = (recebimentos[idx].objetos || []).map((it, i) => {
+    const sel = document.getElementById('dest-it-' + i);
+    return { ...it, destino: sel ? sel.value : (it.destino || 'A definir') };
+  });
+  await salvarRecebimentos();
+  await carregarObjetosRecebidos();
+  recebimentos[idx].objetos.forEach(it => { if(objetosRecebidos[it.objeto]) objetosRecebidos[it.objeto].destino = it.destino; });
+  await salvarObjetosRecebidos();
+  fecharModal();
+  renderRecebimentos();
+  mostrarStatus('Destinos atualizados.', 'ok', 'receb-status');
+}
+function renderRegrasDestino(){
+  const box = document.getElementById('regras-destino');
+  if(!box) return;
+  const clientes = Object.keys(cadastro).sort((a,b) => a.localeCompare(b));
+  const opt = (atual, comHerdar) => (comHerdar ? `<option value="" ${!atual ? 'selected' : ''}>Igual ao cliente</option>` : '')
+    + DESTINOS.map(d => `<option value="${d}" ${d === atual ? 'selected' : ''}>${d}</option>`).join('');
+  box.innerHTML = clientes.map(c => {
+    const r = destinoRegras[c] || {};
+    const setores = (cadastro[c] || []).slice().sort((a,b) => a.localeCompare(b));
+    return `
+      <div style="border:1px solid #d6e4dc; border-radius:8px; padding:10px 12px; margin-top:8px;">
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <b style="flex:1; min-width:180px;">${escapeHtml(c)}</b>
+          <select data-c="${escapeHtml(c)}" data-s="" onchange="definirRegraDestino(this.dataset.c, this.dataset.s, this.value)">${opt(DESTINOS.includes(r.padrao) ? r.padrao : 'A definir', false)}</select>
+        </div>
+        ${setores.length ? `<details style="margin-top:6px;"><summary class="hint" style="cursor:pointer;margin:0;">Setores deste cliente (${setores.length})</summary>
+          ${setores.map(s => `<div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:6px;">
+            <span style="flex:1; min-width:180px; font-size:13px;">${escapeHtml(s)}</span>
+            <select data-c="${escapeHtml(c)}" data-s="${escapeHtml(s)}" onchange="definirRegraDestino(this.dataset.c, this.dataset.s, this.value)">${opt((r.setores || {})[s] || '', true)}</select>
+          </div>`).join('')}</details>` : ''}
+      </div>`;
+  }).join('') || '<div class="hint">Cadastre clientes primeiro.</div>';
+}
+async function definirRegraDestino(cliente, setor, valor){
+  await carregarDestinoRegras();
+  const r = destinoRegras[cliente] = destinoRegras[cliente] || {};
+  if(setor){
+    r.setores = r.setores || {};
+    if(!valor) delete r.setores[setor]; else r.setores[setor] = valor;
+  }else{
+    r.padrao = valor;
+  }
+  await salvarDestinoRegras();
+  aplicarDestinoPadraoRecebimento();
+}
+
 let statusCaixa = ['Recebida', 'Recebida com avaria', 'Pendente de conferência', 'Conferida', 'Não está mais conosco — no CGGD', 'Não está mais conosco — com o cliente'];
 
 /* ================= AUTO-ATUALIZAÇÃO (nova versão do site) ================= */
@@ -1204,6 +1334,7 @@ async function init(){
   await carregarRecebimentos();
   await carregarObjetosRecebidos();
   await carregarStatusCaixa();
+  await carregarDestinoRegras();
   renderToggleCaixa();
   renderClienteSelect();
   renderSelectInstrucoesCaixas();
@@ -1211,7 +1342,8 @@ async function init(){
 
   document.getElementById('f-receb-data').value = hoje();
   document.getElementById('f-receb-hora').value = horaAgora();
-  document.getElementById('f-receb-cliente').addEventListener('change', renderSetorSelectRecebimento);
+  document.getElementById('f-receb-cliente').addEventListener('change', () => { renderSetorSelectRecebimento(); aplicarDestinoPadraoRecebimento(); });
+  document.getElementById('f-receb-setor').addEventListener('change', aplicarDestinoPadraoRecebimento);
   document.getElementById('f-receb-objeto').addEventListener('keydown', onObjetoRecebimentoKeydown);
   document.getElementById('f-receb-objeto').addEventListener('input', atualizarPreviewObjetoRecebimento);
   document.getElementById('f-receb-intervalo-inicio').addEventListener('input', atualizarPreviewIntervalo);
@@ -1222,6 +1354,8 @@ async function init(){
   renderSetorSelectRecebimento();
   renderToggleCaixaRecebimento();
   renderToggleCaixaIntervalo();
+  aplicarDestinoPadraoRecebimento();
+  renderRegrasDestino();
   renderSelectStatusCaixa();
   renderSelectTipoCaixaAvariada();
   renderSelectTipoCaixaTrocada();
@@ -4343,6 +4477,7 @@ function renderTabelaRecebimentoItens(){
       <td>${escapeHtml(it.objeto)}${agrupado ? ' <span class="tag-badge">🔗 mesma caixa ' + caixaNum[chave] + '</span>' : ''}</td>
       <td>${escapeHtml(it.tipo)}</td>
       <td>${it.refCliente ? escapeHtml(it.refCliente) : '<span class="hint" style="margin:0;">—</span>'}</td>
+      <td><select onchange="definirDestinoItemRecebimento(${idx}, this.value)">${DESTINOS.map(d => `<option value="${d}" ${d === (it.destino || destinoLoteRecebimento()) ? 'selected' : ''}>${d}</option>`).join('')}</select></td>
       <td class="center"><button class="btn secondary mini" onclick="abrirDividirCaixaRecebimento(${idx})">Dividir</button> <button class="btn danger mini" onclick="removerObjetoRecebimento(${idx})">Remover</button></td>
     </tr>`;
   }).join('');
@@ -4542,24 +4677,25 @@ async function registrarRecebimento(){
   const tipos = Object.keys(porTipo).sort().map(t => ({ tipo: t, quantidade: porTipo[t] }));
   const total = caixasVistas.size + qtdTrocadas;
 
+  const destinoLote = destinoLoteRecebimento();
   await carregarRecebimentos();
   recebimentos.push({
     id: 'receb_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
-    data, hora, cliente, setor, status, tipos, total,
+    data, hora, cliente, setor, status, tipos, total, destino: destinoLote,
     entregador: { nome: entregadorNome, contato: entregadorContato, documento: entregadorDoc },
     recebidoPor: recebedorNome,
     caixasAvariadas: qtdAvariadas,
     tipoCaixaAvariada: qtdAvariadas > 0 ? tipoCaixaAvariada : '',
     caixasTrocadas: qtdTrocadas,
     tipoCaixaTrocada: qtdTrocadas > 0 ? tipoCaixaTrocada : '',
-    objetos: itensRecebimentoAtual.slice(),
+    objetos: itensRecebimentoAtual.map(it => ({ ...it, destino: it.destino || destinoLote })),
     criadoEm: Date.now()
   });
   await salvarRecebimentos();
 
   await carregarObjetosRecebidos();
   itensRecebimentoAtual.forEach(it => {
-    objetosRecebidos[it.objeto] = { tipo: it.tipo, cliente, setor, data, hora, status, refCliente: it.refCliente || '', caixaId: it.caixaId || it.objeto };
+    objetosRecebidos[it.objeto] = { tipo: it.tipo, cliente, setor, data, hora, status, refCliente: it.refCliente || '', caixaId: it.caixaId || it.objeto, destino: it.destino || destinoLote };
   });
   await salvarObjetosRecebidos();
 
@@ -5070,7 +5206,7 @@ async function salvarEdicaoRecebimento(){
     tipoCaixaAvariada: qtdAvariadas > 0 ? tipoCaixaAvariada : '',
     caixasTrocadas: qtdTrocadas,
     tipoCaixaTrocada: qtdTrocadas > 0 ? tipoCaixaTrocada : '',
-    objetos: itensEdicaoRecebimento.slice(),
+    objetos: itensEdicaoRecebimento.map(it => ({ ...it, destino: it.destino || destinoPadrao(cliente, setor) })),
     editadoEm: Date.now()
   };
   await salvarRecebimentos();
@@ -5078,7 +5214,7 @@ async function salvarEdicaoRecebimento(){
   await carregarObjetosRecebidos();
   objetosRemovidosNaEdicao.forEach(obj => { delete objetosRecebidos[obj]; });
   itensEdicaoRecebimento.forEach(it => {
-    objetosRecebidos[it.objeto] = { tipo: it.tipo, cliente, setor, data, hora, status, refCliente: it.refCliente || '', caixaId: it.caixaId || it.objeto };
+    objetosRecebidos[it.objeto] = { tipo: it.tipo, cliente, setor, data, hora, status, refCliente: it.refCliente || '', caixaId: it.caixaId || it.objeto, destino: it.destino || destinoPadrao(cliente, setor) };
   });
   await salvarObjetosRecebidos();
 
@@ -5208,7 +5344,7 @@ function renderRecebimentos(){
   empty.style.display = 'none';
   tabela.style.display = '';
   tbody.innerHTML = lista.map(r => {
-    const caixasTxt = r.tipos.map(t => `${escapeHtml(t.tipo)}: ${t.quantidade}`).join(', ') + ` — Total: ${r.total}`;
+    const caixasTxt = r.tipos.map(t => `${escapeHtml(t.tipo)}: ${t.quantidade}`).join(', ') + ` — Total: ${r.total}` + resumoDestinoRecebimento(r);
     const entregador = r.entregador || {};
     const entregadorTxt = entregador.nome
       ? escapeHtml(entregador.nome) + (entregador.contato || entregador.documento
@@ -5232,6 +5368,7 @@ function renderRecebimentos(){
           <button class="btn secondary mini" onclick="imprimirObjetosRecebimento('${r.id}')">Imprimir objetos</button>
           ${temObjetoInternoRecebimento(r) ? `<button class="btn secondary mini" onclick="imprimirEtiquetasInternasRecebimento('${r.id}')">🏷️ Etiquetas internas</button>` : ''}
           <button class="btn secondary mini" onclick="exportarCSVRecebimento('${r.id}')">CSV</button>
+          <button class="btn secondary mini" onclick="abrirModalDestinoRecebimento('${r.id}')">🔀 Destino</button>
           <button class="btn secondary mini" onclick="abrirModalEditarRecebimento('${r.id}')">Editar</button>
           <button class="btn danger mini" onclick="excluirRecebimento('${r.id}')">Excluir</button>
         </td>
