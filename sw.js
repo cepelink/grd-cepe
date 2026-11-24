@@ -3,7 +3,8 @@
      assim que existir) e só usa o cache se estiver sem internet.
    - Bibliotecas externas (jsPDF, JsBarcode, Firebase SDK...): cache, pois têm versão fixa na URL.
    - Firestore/dados NÃO passam por aqui: continuam indo direto para o Firebase. */
-const CACHE = 'grd-cepe-v1';
+const PREFIXO = 'grd-cepe-';   // só mexe nos caches do próprio GRD (não apaga os de outros apps do domínio)
+const CACHE = PREFIXO + 'v2';
 const SHELL = ['./', 'index.html', 'manifest.json', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 const CDNS  = ['cdnjs.cloudflare.com', 'cdn.jsdelivr.net', 'www.gstatic.com'];
 
@@ -18,7 +19,7 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(keys => Promise.all(keys.filter(k => k.startsWith(PREFIXO) && k !== CACHE).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
